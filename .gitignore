@@ -1,0 +1,13 @@
+# Local environment variables
+.env
+.env.*
+!.env.example
+
+# Python virtual environments and caches
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Windows download metadata
+*:Zone.Identifier
