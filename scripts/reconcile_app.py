@@ -1,13 +1,22 @@
-"""Operator worklist for stock reconciliation and sale availability."""
+"""Kloud Kart Database Solutions stock reconciliation and Monday exports."""
 
 import os
-from math import ceil
 from contextlib import closing
 from dataclasses import dataclass
+from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
+from math import ceil
 from typing import cast
 
 import psycopg2
 import streamlit as st
+
+from kloud_kart_db_solution.monday_report import (
+    CustomerSummary,
+    MondayReport,
+    ReportFormatError,
+    load_monday_report,
+)
 
 
 @dataclass(frozen=True)
@@ -22,17 +31,15 @@ class Product:
         return f"{self.product_id} · {self.name or 'Unnamed product'}"
 
 
-def load_products(dsn: str) -> tuple[str, list[Product]]:
+def load_products(dsn: str) -> list[Product]:
     with closing(psycopg2.connect(dsn, connect_timeout=5)) as conn, conn, conn.cursor() as cursor:
-        cursor.execute("SELECT current_database(), current_user")
-        target = cast(tuple[str, str], cursor.fetchone())
         cursor.execute("""
             SELECT product_id, product_name, stock_quantity, is_available
             FROM public.products
             ORDER BY product_id
         """)
         rows = cast(list[tuple[int, str | None, int | None, bool]], cursor.fetchall())
-    return f"{target[0]} · {target[1]}", [Product(*row) for row in rows]
+    return [Product(*row) for row in rows]
 
 
 def save_batch(
@@ -72,19 +79,249 @@ def save_batch(
 
 
 def main() -> None:
-    st.set_page_config(page_title="Stock reconciliation", layout="wide")
-    st.title("Stock reconciliation")
+    st.set_page_config(page_title="Kloud Kart Database Solutions", layout="wide")
+    st.title("Kloud Kart Database Solutions")
 
     dsn = os.environ.get("DATABASE_URL")
     if not dsn:
         st.error("Set DATABASE_URL in the environment file before launching the app.")
         return
 
+    stock_tab, exports_tab = st.tabs(["Stock reconciliation", "Monday exports"])
+    with stock_tab:
+        render_stock_reconciliation(dsn)
+    with exports_tab:
+        render_monday_exports(dsn)
+
+
+def render_monday_exports(dsn: str) -> None:
+    st.header("Monday exports")
+    st.write("Review customer spending and monthly history, or download the report and top 100 separately.")
+    today = datetime.now(UTC).date()
+    with st.form("monday-export"):
+        selected_date = st.date_input(
+            "Report cutoff date",
+            value=today - timedelta(days=today.weekday()),
+            help="Orders before the start of this date count. Choose a Monday for a weekly run.",
+        )
+        # Streamlit's type assumes a default date stays set, but an empty
+        # browser value can deserialize to None.
+        cutoff = cast(date | None, selected_date)
+        submitted = st.form_submit_button("Generate report", type="primary")
+
+    if submitted:
+        st.session_state.pop("monday_export", None)
+        if cutoff is None:
+            st.error("Choose a report cutoff date.")
+            return
+        try:
+            with st.spinner("Generating the Monday report…"):
+                st.session_state["monday_export"] = load_monday_report(dsn, cutoff)
+                reset_monday_preview_page()
+        except ReportFormatError as error:
+            st.error(str(error))
+        except (OSError, psycopg2.Error):
+            st.error("Could not generate the report. Check the database connection and report read permissions.")
+
+    report = cast(MondayReport | None, st.session_state.get("monday_export"))
+    if report is None:
+        return
+
+    st.subheader(f"Customer spending before {report.cutoff.isoformat()}")
+    spend_col, orders_col, unmatched_col = st.columns(3)
+    recorded_spend = sum((row.spend for row in report.customers if row.spend is not None), Decimal(0))
+    spend_col.metric("Recorded customer spend", f"{recorded_spend:,.2f}")
+    orders_col.metric("Orders matched to customers", f"{sum(row.order_count for row in report.customers):,}")
+    unmatched_col.metric("Orders missing a customer", f"{report.unmatched_orders:,}")
+    if report.unmatched_orders and report.unmatched_spend is not None:
+        st.caption(f"Unmatched orders carry {report.unmatched_spend:,.2f} in recorded spend.")
+
+    render_monday_analytics(report, recorded_spend)
+    st.subheader("Customer preview")
+    render_monday_preview(report)
+
+    st.subheader("Downloads")
+    main_file, top_file = st.columns(2)
+    main_file.download_button(
+        "Download customer report CSV",
+        data=report.report_csv,
+        file_name=report.report_filename,
+        mime="text/csv",
+        on_click="ignore",
+    )
+    top_file.download_button(
+        "Download top 100 CSV",
+        data=report.top_100_csv,
+        file_name=report.top_100_filename,
+        mime="text/csv",
+        on_click="ignore",
+    )
+
+
+def render_monday_analytics(report: MondayReport, recorded_spend: Decimal) -> None:
+    st.subheader("Monthly customer activity")
+    st.caption("Last 12 complete months. Includes completed orders matched to a customer.")
+    if report.monthly_activity:
+        measure = st.radio("Monthly measure", ["Recorded spend", "Completed orders"], horizontal=True)
+        st.line_chart(  # pyright: ignore[reportUnknownMemberType]
+            [
+                {
+                    "Month": month.month[:7],
+                    "Recorded spend": float(month.spend) if month.spend.is_finite() else None,
+                    "Completed orders": month.order_count,
+                }
+                for month in report.monthly_activity
+            ],
+            x="Month",
+            y=measure,
+        )
+    else:
+        st.info("There are no customer-month rows to chart.")
+
+    coverage, concentration = st.columns(2)
+    coverage.subheader("Customer order coverage")
+    with_orders = sum(row.order_count > 0 for row in report.customers)
+    coverage.caption("Customers grouped by whether they had a completed order before the cutoff.")
+    coverage.bar_chart(  # pyright: ignore[reportUnknownMemberType]
+        [
+            {"Group": "With completed orders", "Customers": with_orders},
+            {"Group": "Without completed orders", "Customers": len(report.customers) - with_orders},
+        ],
+        x="Group",
+        y="Customers",
+        horizontal=True,
+    )
+
+    concentration.subheader("Top 100 spend concentration")
+    top_spend = sum((row.spend for row in report.customers if row.rank is not None and row.spend is not None), Decimal(0))
+    if recorded_spend.is_finite() and recorded_spend > 0 and top_spend.is_finite():
+        concentration.metric("Share of matched customer spend", f"{top_spend / recorded_spend:.1%}")
+        concentration.bar_chart(  # pyright: ignore[reportUnknownMemberType]
+            [
+                {"Group": "Top 100", "Recorded spend": float(top_spend)},
+                {"Group": "Other customers", "Recorded spend": float(recorded_spend - top_spend)},
+            ],
+            x="Group",
+            y="Recorded spend",
+            horizontal=True,
+        )
+    else:
+        concentration.info("Spend concentration requires a positive recorded customer total.")
+
+
+def reset_monday_preview_page() -> None:
+    st.session_state.pop("monday-preview-page", None)
+
+
+def render_monday_preview(report: MondayReport) -> None:
+    view_col, search_col, sort_col = st.columns(3)
+    view = view_col.radio(
+        "Show", ["All customers", "With completed orders", "Top 100"],
+        horizontal=True, on_change=reset_monday_preview_page,
+    )
+    search = search_col.text_input("Customer name or ID", on_change=reset_monday_preview_page).strip().casefold()
+    sort = sort_col.selectbox(
+        "Sort customers by",
+        ["Highest spend", "Lowest spend", "Most orders", "Customer ID"],
+        on_change=reset_monday_preview_page,
+    )
+    customers = [
+        row for row in report.customers
+        if (
+            view == "All customers"
+            or (view == "With completed orders" and row.order_count > 0)
+            or (view == "Top 100" and row.rank is not None)
+        )
+        and (search in row.name.casefold() or search == str(row.customer_id))
+    ]
+    if not customers:
+        st.info("No customers match this view.")
+        return
+
+    # Sort before slicing so the sort applies to the filtered result across
+    # every page. Missing amounts stay at the end in either spend sort.
+    if sort in {"Highest spend", "Lowest spend"}:
+        def spend_key(row: CustomerSummary) -> tuple[bool, Decimal, int]:
+            amount = row.spend if row.spend is not None else Decimal(0)
+            if amount.is_nan():
+                amount = Decimal("Infinity")  # PostgreSQL orders NaN above finite amounts.
+            return row.spend is None, -amount if sort == "Highest spend" else amount, row.customer_id
+
+        customers.sort(key=spend_key)
+    elif sort == "Most orders":
+        customers.sort(key=lambda row: (-row.order_count, row.customer_id))
+    else:
+        customers.sort(key=lambda row: row.customer_id)
+
+    # Render the table above the page input while using the input's current value.
+    preview = st.container()
+    page_size = 25
+    page_count = ceil(len(customers) / page_size)
+    page = 1
+    if page_count > 1:
+        page = st.number_input("Page", min_value=1, max_value=page_count, step=1, key="monday-preview-page")
+    first = (page - 1) * page_size
+    visible = customers[first:first + page_size]
+    preview.caption(f"Showing {first + 1:,}–{first + len(visible):,} of {len(customers):,} customers")
+    preview.dataframe(  # pyright: ignore[reportUnknownMemberType]
+        [
+            {
+                "Customer ID": row.customer_id,
+                "Customer": row.name,
+                "Orders": row.order_count,
+                "Recorded spend": float(row.spend) if row.spend is not None else None,
+                "Rank": row.rank,
+            }
+            for row in visible
+        ],
+        hide_index=True,
+        column_config={"Recorded spend": st.column_config.NumberColumn(format="localized", step=0.01)},
+    )
+
+    st.subheader(
+        "Inspect Monthly History A User",
+        help=(
+            f"The picker lists the {len(visible):,} customers on the current preview page (up to 25). "
+            "Choose All customers to include customers without completed orders. "
+            "Use the search above to find a customer on another page."
+        ),
+    )
+    on_page = {row.customer_id: row for row in visible}
+    selected = st.selectbox(
+        "Inspect monthly history",
+        list(on_page),
+        index=None,
+        placeholder="Choose a customer on this page",
+        format_func=lambda customer_id: f"{on_page[customer_id].name or 'Unnamed customer'} · {customer_id}",
+        label_visibility="collapsed",
+    )
+    if selected is None:
+        return
+    history = report.monthly_history(selected)
+    st.dataframe(  # pyright: ignore[reportUnknownMemberType]
+        [
+            {
+                "Month": month.month,
+                "Orders": month.order_count,
+                "Recorded spend": float(month.spend) if month.spend is not None else None,
+                "Running spend": float(month.running_spend),
+            }
+            for month in history
+        ],
+        hide_index=True,
+        column_config={
+            "Recorded spend": st.column_config.NumberColumn(format="localized", step=0.01),
+            "Running spend": st.column_config.NumberColumn(format="localized", step=0.01),
+        },
+    )
+
+
+def render_stock_reconciliation(dsn: str) -> None:
     # Keep the displayed balances until refresh or a successful write. A
     # Streamlit rerun on submit must use the counts the operator reviewed.
     if st.button("Refresh products"):
         st.session_state.pop("inventory_snapshot", None)
-    if "inventory_snapshot" not in st.session_state:
+    if not isinstance(st.session_state.get("inventory_snapshot"), list):
         try:
             st.session_state["inventory_snapshot"] = load_products(dsn)
             st.session_state["worklist_selections"] = {}
@@ -94,13 +331,13 @@ def main() -> None:
             st.error("Could not load products. Check the connection and apply migration 001.")
             return
 
-    target, products = cast(tuple[str, list[Product]], st.session_state["inventory_snapshot"])
+    products = cast(list[Product], st.session_state["inventory_snapshot"])
     version = cast(int, st.session_state["snapshot_version"])
-    st.caption(f"Connected as {target}")
     feedback = cast(str | None, st.session_state.pop("inventory_feedback", None))
     if feedback:
         st.success(feedback)
 
+    st.subheader("Product worklist")
     views = {
         "Negative stock": [
             product for product in products if product.stock is not None and product.stock < 0
@@ -118,7 +355,6 @@ def main() -> None:
         st.info("No products in this view. The Paused view includes products awaiting release.")
         return
 
-    st.subheader("Product worklist")
     st.caption("Select rows in the table, then update them below. Selections carry across pages in this view.")
     selected = select_worklist_products(products, version, scope)
     if selected:
@@ -127,6 +363,7 @@ def main() -> None:
 
 
 def select_worklist_products(products: list[Product], version: int, scope: str) -> list[Product]:
+    worklist = st.container()
     page_size = 10
     page_count = ceil(len(products) / page_size)
     page = 1
@@ -136,7 +373,7 @@ def select_worklist_products(products: list[Product], version: int, scope: str) 
         )
     first = (page - 1) * page_size
     page_products = products[first:first + page_size]
-    st.caption(f"Showing {first + 1:,}–{first + len(page_products):,} of {len(products):,} products")
+    worklist.caption(f"Showing {first + 1:,}–{first + len(page_products):,} of {len(products):,} products")
 
     # Store IDs so selections are independent of the row positions returned
     # by each page. Clear selections when refreshing the stock snapshot.
@@ -144,7 +381,7 @@ def select_worklist_products(products: list[Product], version: int, scope: str) 
     selected_ids = selections.setdefault(scope, set())
     revisions = cast(dict[str, int], st.session_state.get("worklist_selection_revisions", {}))
     revision = revisions.get(scope, 0)
-    select_all_column, clear_column = st.columns(2)
+    select_all_column, clear_column = worklist.columns(2)
     select_all = select_all_column.button(
         f"Select all {len(products):,}",
         help="Select every product in this view, including other pages.",
@@ -165,7 +402,7 @@ def select_worklist_products(products: list[Product], version: int, scope: str) 
     ]
 
     # Streamlit includes optional dataframe backends in this overload.
-    table = st.dataframe(  # pyright: ignore[reportUnknownMemberType]
+    table = worklist.dataframe(  # pyright: ignore[reportUnknownMemberType]
         [
             {
                 "ID": product.product_id,

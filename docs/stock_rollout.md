@@ -98,7 +98,8 @@ uv run kk-test-db
 uv run kk-app
 ```
 
-Open `http://127.0.0.1:8501`. Choose **Negative stock**, **Paused**, or
+Open Kloud Kart Database Solutions at `http://127.0.0.1:8501` and select **Stock reconciliation**.
+Choose **Negative stock**, **Paused**, or
 **All products**, then select rows directly in the worklist. Each page shows
 10 products. Your selection carries across pages within the same view.
 Use **Select all** to select every product in the current view across all
