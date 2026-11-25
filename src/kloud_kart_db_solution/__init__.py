@@ -58,5 +58,5 @@ def flash_sale_test() -> int:
 
 def reconcile_app() -> int:
     return _run_python(
-        "-m", "streamlit", "run", "scripts/reconcile_app.py", "--server.address", "127.0.0.1"
+        "-m", "streamlit", "run", "scripts/app.py", "--server.address", "127.0.0.1"
     )

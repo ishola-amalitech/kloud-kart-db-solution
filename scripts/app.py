@@ -1,4 +1,4 @@
-"""Kloud Kart Database Solutions stock reconciliation and Monday exports."""
+"""Kloud Kart Database Solutions stock reconciliation, Monday exports, and low stock."""
 
 import os
 from contextlib import closing
@@ -17,6 +17,8 @@ from kloud_kart_db_solution.monday_report import (
     ReportFormatError,
     load_monday_report,
 )
+
+from kloud_kart_db_solution.stock_rollup import render_stock_rollup
 
 
 @dataclass(frozen=True)
@@ -87,11 +89,13 @@ def main() -> None:
         st.error("Set DATABASE_URL in the environment file before launching the app.")
         return
 
-    stock_tab, exports_tab = st.tabs(["Stock reconciliation", "Monday exports"])
+    stock_tab, exports_tab, low_stock_tab = st.tabs(["Stock reconciliation", "Monday exports", "Low stock"])
     with stock_tab:
         render_stock_reconciliation(dsn)
     with exports_tab:
         render_monday_exports(dsn)
+    with low_stock_tab:
+        render_stock_rollup(dsn)
 
 
 def render_monday_exports(dsn: str) -> None:
