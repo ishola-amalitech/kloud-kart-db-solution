@@ -2,14 +2,26 @@
 name = "kloud-kart-db-solution"
 version = "0.1.0"
 requires-python = ">=3.14"
-dependencies = []
+dependencies = [
+    "psycopg2-binary>=2.9.13",
+    "python-dotenv>=1.0",
+    "streamlit>=1.67.0",
+]
 
 [project.scripts]
 kk-test-db = "kloud_kart_db_solution:test_db"
 kk-prod-db = "kloud_kart_db_solution:prod_db"
 kk-test-db-exec = "kloud_kart_db_solution:test_db_exec"
 kk-prod-db-exec = "kloud_kart_db_solution:prod_db_exec"
+kk-race-test = "kloud_kart_db_solution:race_test"
+kk-flash-sale-test = "kloud_kart_db_solution:flash_sale_test"
+kk-app = "kloud_kart_db_solution:reconcile_app"
 
 [build-system]
 requires = ["uv_build>=0.13,<0.14"]
 build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "types-psycopg2>=2.9.21.20261122",
+]

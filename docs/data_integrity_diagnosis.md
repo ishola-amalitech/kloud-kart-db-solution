@@ -1,18 +1,15 @@
-# Kloud Kart schema findings
+# Kloud Kart data integrity diagnosis
 
-| Finding | Observed in the extract |
+| Priority | What changes in the workflow |
 |---|---|
-| [Broken references](#missing-foreign-keys) | **1,023 rows**, including **692 order items** pointing to missing orders |
-| [Missing fields](#missing-fields) | **148 items** without a unit price and **37 products** without a category |
-| [Customer email duplicates](#duplicate-values) | **299 exact groups / 598 rows**. After trimming and lowercasing, **533 groups / 1,068 rows** |
-| [Repeated order products](#duplicate-values) | **616 order/product pairs / 1,233 lines**. Confirm whether split lines are allowed. |
-| [Stock and movements](#stock-and-inventory-movements) | **14 negative balances**, **144 ledger differences**, and **90 zero-change stock takes** |
-| [Order totals](#quantities-prices-and-order-totals) | **2,279 differences** on fully priced orders and **147 orders** with incomplete inputs |
-| [Category cycle](#category-hierarchy) | **2 categories** in one cycle |
-| [Status and sale traceability](#order-statuses-and-inventory-reasons) | **15 stored status spellings**. **262,088 sale movements** lack an enforced link to a purchase. |
+| [**1 · Act first**](#rank-1--act-first) | Count **14 products** before selling, surface **15 missed reorder candidates** at the test threshold, and fix the spending report’s status rule and runtime. |
+| [**2 · Fix next**](#rank-2--fix-next) | Reconcile stock and orders, keep unmatched spending visible, and review **19 active email groups**. |
+| [**3 · Investigate**](#rank-3--investigate) | Recover missing order context and trace sale movements. Confirm whether repeated lines and time zones affect a decision. |
+| [**4 · Record only**](#rank-4--record-only) | Keep safeguards for valid exceptions and checks with zero observed violations. |
 
 ## Table of contents
 
+- [Ranked impact and proposed fixes](#ranked-impact-and-proposed-fixes)
 - [What the audit covered](#what-the-audit-covered)
 - [Missing foreign keys](#missing-foreign-keys)
 - [Missing values and uniqueness](#missing-values-and-uniqueness)
@@ -29,6 +26,50 @@
 - [Overselling, timestamps, and indexes](#overselling-timestamps-and-indexes)
 - [Reproduce the audit](#reproduce-the-audit)
 
+## Ranked impact and proposed fixes
+
+The [lab brief](../lab_brief.md) makes checkout, reordering, customer spending, and inventory traceability the priorities. Rank by what changes in those workflows. Within the same workflow, use affected products, orders, spend, or staff time to judge the size of the impact.
+
+**Measurement assumptions.** The report scenario covers **21 August 2026 inclusive to 21 August 2027 exclusive**, the trailing 12 months through the extract’s last order date. For comparison, it treats trimmed, lowercased `complete` and `completed` as completed and uses stored order totals. That is a proposed reporting rule. Decide explicitly how to handle shipped, cancelled, and refunded orders before publishing. The reorder scenario uses **5 units or fewer** and traverses categories from valid roots. Monetary values are in the extract’s recorded units. Scenario differences measure what the chosen rule would change. Actual refunds, lost sales, and staff effort need separate evidence.
+
+### Rank 1 · Act first
+
+| Finding | **Cost** | **Proposed fix and trade-off** |
+|---|---|---|
+| [Negative stock and overselling](#overselling-timestamps-and-indexes) | **14 products to count**, with balances a combined **27 units below zero**. The brief reports two oversells last month. The extract cannot link them to these balances or establish refund costs. | Count affected stock and pause those products until verified. Guard checkout with a conditional stock decrement and write the order, line, and movement in the same transaction. Add a nonnegative constraint after reconciling existing balances. Run the supplied race test before the flash sale. Pausing products temporarily reduces availability. |
+| [Status spellings](#order-statuses) | For known customers, exact `completed` matching drops **6,888 orders** and **21,243,400.85** in stored totals relative to the proposed completion rule. This is a conditional difference in the spend report. | Map raw statuses to an approved vocabulary and enforce it on writes. Preserve raw values while validating the mapping. An incorrect mapping could count orders the business excludes. |
+| [Category rollup omissions](#category-hierarchy) | A root-based rollup misses **43 products**: **37 uncategorized** and **6 under the cycle**. Of these, **15** qualify as low stock at the test threshold. The broken parent link affects **0 products** in this traversal. | Show unreachable and uncategorized products in a reorder exception list now. Confirm their categories and the intended parent links, then add the category foreign keys and cycle guard. Keep an explicit uncategorized bucket if classification is optional. A guessed category would move stock into the wrong purchasing group. |
+| [Slow customer-spending report](#overselling-timestamps-and-indexes) | About **40 minutes** per run, with some Mondays unfinished, according to the brief. Nana sometimes decides without it. The time attributable to missing indexes is unknown. | Aggregate the spending and counts before computing running totals and ranks. Test candidate indexes and benchmark elapsed time and completion on the same workload using the existing PostgreSQL server. Check the figures match the agreed reporting rules. Indexes add storage and write overhead. |
+
+### Rank 2 · Fix next
+
+| Finding | **Cost** | **Proposed fix and trade-off** |
+|---|---|---|
+| [Stock differs from the movement ledger](#stock-and-inventory-movements) | **144 products** differ. Comparing recorded stock with net movements changes the low-stock flag for **30 products** at the test threshold. Physical counts and opening balances are needed to tell which list is right. | Recount those 30 first, reconcile against opening balances and history, and post documented corrections. Update balances and movements together going forward. Replacing stock with an incomplete ledger could introduce new errors. |
+| [Orders point to missing customers](#missing-foreign-keys) | The customer join excludes **13 orders worth 5,554.26** under the proposed report rule. Adwoa cannot attribute that spend to a customer. | Show unmatched spend separately, recover verified customer links, then enforce the foreign key. Guessing a customer could change spend and rank for the wrong person. |
+| [Stored totals and line sums differ](#quantities-prices-and-order-totals) | **114 fully priced orders** differ in the report window, by **81,617.63** in summed absolute differences. Taxes, discounts, and shipping can account for differences. The amount needing correction is unknown. | Reconcile against receipts and documented adjustments. Store the inputs needed to explain or recompute totals. Replacing totals with raw line sums could erase valid adjustments. |
+| [Missing line prices](#missing-fields) | **6 eligible orders** cannot be fully priced from their lines. Their recorded totals sum to **9,875.04**. The wider extract has **148 missing line prices** across **147 linked orders**. | Recover the price at the time of sale from receipts or backups, flag unresolved orders, then require a price on new lines. Using today’s catalog price would rewrite historical spend. |
+| [Duplicate customer emails](#duplicate-values) | Treating matching normalized emails as one person would reduce the modeled purchaser count from **7,730 to 7,711**. The **19 groups** with multiple purchasing IDs warrant review. Top-100 membership did **not** change in that scenario. | Confirm identities before merging and preserve the links to their orders. Enforce normalized uniqueness only if shared addresses are disallowed. An automatic merge could combine different people’s histories. |
+
+### Rank 3 · Investigate
+
+| Finding | **Cost** | **Proposed fix and trade-off** |
+|---|---|---|
+| [Items point to missing orders](#missing-foreign-keys) | **692 lines** carry **826,327.80** in priced line value. Missing order headers leave their date, customer, and status unknown, so their effect on the spend report cannot be bounded from the extract. | Recover verified order headers or retain unresolved lines in a review queue. Enforce the order foreign key on new writes and validate historic data after repair. Deleting lines would remove evidence. |
+| [Missing product and purchase links in the movement log](#inventory-reasons) | **120 logs** record **120 units of outward movement** against missing product records. Separately, **262,088 sale movements** lack an enforced purchase link. Investigation time and the number of sales that cannot be traced by other evidence are unknown. | Recover product links where possible. Link future sale movements to the order item in the checkout transaction and enforce product consistency. Time a sample of sale or refund investigations. Leave uncertain historical purchase links unresolved. |
+| [Repeated order/product lines](#duplicate-values) | **32 repeated pairs** appear in the report scenario. The data does not establish a duplicate charge or lost spend. | Compare lines with receipts or fulfillment records. Enforce one line per order/product only if split lines are invalid. A blanket merge could erase valid pricing or fulfillment differences. |
+| [Missing time-zone information](#overselling-timestamps-and-indexes) | **4 timestamp columns** store local clock values without offsets. The number of orders that would move to another reporting month is unknown. | Declare a report time zone and test boundary orders under plausible source time zones. Store future event times with explicit offsets. Backfill only when the original zone can be established. |
+
+### Rank 4 · Record only
+
+| Finding | **Cost** | **Proposed fix or safeguard** |
+|---|---|---|
+| [Zero-change stock takes and reason codes](#inventory-reasons) | **90 stock takes** change the balance by **0 units**. The reason profile shows no spelling variants or sign exceptions against the observed rules. | Preserve zero movements for stock takes. Enforce the agreed reason vocabulary and sign rules on new writes. |
+| [NULL root parents and optional inventory notes](#missing-fields) | **7 root categories** legitimately have no parent. **281,927 NULL notes** have no demonstrated workflow cost without a rule requiring notes for a movement reason. | Keep root parents and notes optional. Require notes only for reasons with an explicit audit requirement. |
+| [Checks with zero violations](#missing-check-constraints-and-cross-row-validation) | No measured impact from broken product-to-category or item-to-product references, blank required-text candidates, duplicate sibling names, self-parent links, nonpositive quantities, invalid numeric values, empty orders, missing stock reconciliation inputs, or reversed dates among matched records. | Keep the proposed foreign keys, required-field checks, and quantity or value constraints in the detailed findings. Apply uniqueness, chronology, and order-completeness rules where the workflow calls for them. These checks need no historical cleanup based on this extract. |
+
+**Avoid double-counting.** The same order or product can appear in several findings. Use the number of orders or products someone must review to plan work. Use line counts, status variants, and subgroup totals to explain why each record was flagged.
+
 ## What the audit covered
 
 All **822,832 rows** loaded in isolated PostgreSQL 18.7 with primary keys enforced. All six counts matched the source CSVs. The [baseline schema](../provided_resources/schema.sql) has no foreign keys, CHECKs, or standalone UNIQUE constraints. Every column outside the primary keys allows NULL.
@@ -43,6 +84,8 @@ All **822,832 rows** loaded in isolated PostgreSQL 18.7 with primary keys enforc
 | `inventory_log` | Stock movements | `log_id` | 282,352 |
 
 ## Missing foreign keys
+
+**1,023 rows** point to missing records across the six relationships checked.
 
 - **Detection.** Left-joined each non-NULL reference to the target primary key and counted missing matches.
 - **Prevention.** Add the foreign keys below. Use `NOT NULL` for mandatory references.
