@@ -1,0 +1,117 @@
+ Sort  (cost=183109.18..184422.84 rows=525466 width=152) (actual rows=525461.00 loops=1)
+   Sort Key: c.customer_id, (NULL::date) NULLS FIRST
+   Sort Method: external merge  Disk: 23856kB
+   Buffers: shared hit=224861, temp read=4481 written=3692
+   CTE report_period
+     ->  Result  (cost=0.00..0.03 rows=1 width=12) (actual rows=1.00 loops=1)
+   CTE spend_groups
+     ->  GroupAggregate  (cost=4652.42..4684.34 rows=1110 width=49) (actual rows=92370.00 loops=1)
+           Group Key: c_2.customer_id, (CASE WHEN (o.order_date >= p_1.first_complete_month) THEN (date_trunc('month'::text, o.order_date))::date ELSE NULL::date END)
+           Group Key: c_2.customer_id
+           Filter: ((c_2.customer_id IS NOT NULL) OR (GROUPING((CASE WHEN (o.order_date >= p_1.first_complete_month) THEN (date_trunc('month'::text, o.order_date))::date ELSE NULL::date END)) = 1))
+           Rows Removed by Filter: 2
+           Buffers: shared hit=224219, temp read=301 written=302
+           ->  Sort  (cost=4652.42..4653.81 rows=555 width=24) (actual rows=111351.00 loops=1)
+                 Sort Key: c_2.customer_id, (CASE WHEN (o.order_date >= p_1.first_complete_month) THEN (date_trunc('month'::text, o.order_date))::date ELSE NULL::date END)
+                 Sort Method: external merge  Disk: 2408kB
+                 Buffers: shared hit=224219, temp read=301 written=302
+                 ->  Nested Loop  (cost=0.29..4627.13 rows=555 width=24) (actual rows=111351.00 loops=1)
+                       Buffers: shared hit=224219
+                       ->  CTE Scan on report_period p_1  (cost=0.00..0.02 rows=1 width=4) (actual rows=1.00 loops=1)
+                             Storage: Memory  Maximum Storage: 17kB
+                       ->  Nested Loop Left Join  (cost=0.29..4621.56 rows=555 width=28) (actual rows=111351.00 loops=1)
+                             Buffers: shared hit=224219
+                             ->  Nested Loop  (cost=0.00..4281.66 rows=555 width=28) (actual rows=111351.00 loops=1)
+                                   Join Filter: (o.order_date < p_2.cutoff)
+                                   Buffers: shared hit=1346
+                                   ->  CTE Scan on report_period p_2  (cost=0.00..0.02 rows=1 width=8) (actual rows=1.00 loops=1)
+                                         Storage: Memory  Maximum Storage: 17kB
+                                   ->  Seq Scan on orders o  (cost=0.00..4260.82 rows=1666 width=28) (actual rows=111351.00 loops=1)
+                                         Filter: (lower(btrim(status)) = ANY ('{complete,completed}'::text[]))
+                                         Rows Removed by Filter: 48033
+                                         Buffers: shared hit=1346
+                             ->  Index Only Scan using customers_pkey on customers c_2  (cost=0.29..0.61 rows=1 width=4) (actual rows=1.00 loops=111351)
+                                   Index Cond: (customer_id = o.customer_id)
+                                   Heap Fetches: 170
+                                   Index Searches: 111351
+                                   Buffers: shared hit=222873
+   ->  Append  (cost=1484.81..49467.03 rows=525466 width=152) (actual rows=525461.00 loops=1)
+         Buffers: shared hit=224861, temp read=1499 written=698
+         ->  Hash Right Join  (cost=1484.81..2058.57 rows=40420 width=152) (actual rows=40420.00 loops=1)
+               Hash Cond: (spend_groups.customer_id = c.customer_id)
+               Buffers: shared hit=224747, temp read=301 written=697
+               ->  WindowAgg  (cost=47.36..58.38 rows=552 width=52) (actual rows=37900.00 loops=1)
+                     Window: w1 AS (ORDER BY spend_groups.recorded_spend, spend_groups.customer_id ROWS UNBOUNDED PRECEDING)
+                     Storage: Memory  Maximum Storage: 17kB
+                     Buffers: shared hit=224219, temp read=301 written=697
+                     ->  Sort  (cost=47.34..48.72 rows=552 width=44) (actual rows=37900.00 loops=1)
+                           Sort Key: spend_groups.recorded_spend DESC NULLS LAST, spend_groups.customer_id
+                           Sort Method: quicksort  Memory: 3017kB
+                           Buffers: shared hit=224219, temp read=301 written=697
+                           ->  CTE Scan on spend_groups  (cost=0.00..22.20 rows=552 width=44) (actual rows=37900.00 loops=1)
+                                 Filter: (is_customer_total AND (customer_id IS NOT NULL))
+                                 Rows Removed by Filter: 54470
+                                 Storage: Disk  Maximum Storage: 4096kB
+                                 Buffers: shared hit=224219, temp read=301 written=697
+               ->  Hash  (cost=932.20..932.20 rows=40420 width=17) (actual rows=40420.00 loops=1)
+                     Buckets: 65536  Batches: 1  Memory Usage: 2449kB
+                     Buffers: shared hit=528
+                     ->  Seq Scan on customers c  (cost=0.00..932.20 rows=40420 width=17) (actual rows=40420.00 loops=1)
+                           Buffers: shared hit=528
+         ->  Merge Left Join  (cost=0.92..44758.93 rows=485040 width=152) (actual rows=485040.00 loops=1)
+               Merge Cond: (c_1.customer_id = opening.customer_id)
+               Buffers: shared hit=114, temp read=802 written=1
+               ->  WindowAgg  (cost=0.92..42311.48 rows=485040 width=80) (actual rows=485040.00 loops=1)
+                     Window: w1 AS (PARTITION BY c_1.customer_id ORDER BY (((p.first_complete_month + ((m.offset_months)::double precision * '1 mon'::interval)))::date) ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+                     Storage: Memory  Maximum Storage: 17kB
+                     Buffers: shared hit=114, temp read=402 written=1
+                     ->  Incremental Sort  (cost=0.84..28972.88 rows=485040 width=48) (actual rows=485040.00 loops=1)
+                           Sort Key: c_1.customer_id, (((p.first_complete_month + ((m.offset_months)::double precision * '1 mon'::interval)))::date)
+                           Presorted Key: c_1.customer_id
+                           Full-sort Groups: 13474  Sort Method: quicksort  Average Memory: 25kB  Peak Memory: 25kB
+                           Buffers: shared hit=114, temp read=402 written=1
+                           ->  Merge Left Join  (cost=0.29..13407.23 rows=485040 width=48) (actual rows=485040.00 loops=1)
+                                 Merge Cond: (c_1.customer_id = g.customer_id)
+                                 Join Filter: (g.bucket_month = ((p.first_complete_month + ((m.offset_months)::double precision * '1 mon'::interval)))::date)
+                                 Rows Removed by Join Filter: 634763
+                                 Buffers: shared hit=114, temp read=402 written=1
+                                 ->  Nested Loop  (cost=0.29..7138.88 rows=485040 width=12) (actual rows=485040.00 loops=1)
+                                       Buffers: shared hit=114
+                                       ->  Index Only Scan using customers_pkey on customers c_1  (cost=0.29..1075.59 rows=40420 width=4) (actual rows=40420.00 loops=1)
+                                             Heap Fetches: 78
+                                             Index Searches: 1
+                                             Buffers: shared hit=114
+                                       ->  Materialize  (cost=0.00..0.32 rows=12 width=8) (actual rows=12.00 loops=40420)
+                                             Storage: Memory  Maximum Storage: 17kB
+                                             ->  Nested Loop  (cost=0.00..0.26 rows=12 width=8) (actual rows=12.00 loops=1)
+                                                   ->  CTE Scan on report_period p  (cost=0.00..0.02 rows=1 width=4) (actual rows=1.00 loops=1)
+                                                         Storage: Memory  Maximum Storage: 17kB
+                                                   ->  Function Scan on generate_series m  (cost=0.00..0.12 rows=12 width=4) (actual rows=12.00 loops=1)
+                                 ->  Materialize  (cost=0.00..23.59 rows=555 width=48) (actual rows=653617.00 loops=1)
+                                       Storage: Memory  Maximum Storage: 17kB
+                                       Buffers: temp read=402 written=1
+                                       ->  CTE Scan on spend_groups g  (cost=0.00..22.20 rows=555 width=48) (actual rows=54469.00 loops=1)
+                                             Filter: (NOT is_customer_total)
+                                             Rows Removed by Filter: 37901
+                                             Storage: Disk  Maximum Storage: 4096kB
+                                             Buffers: temp read=402 written=1
+               ->  Materialize  (cost=0.00..22.21 rows=3 width=36) (actual rows=427201.00 loops=1)
+                     Storage: Memory  Maximum Storage: 17kB
+                     Buffers: temp read=400
+                     ->  CTE Scan on spend_groups opening  (cost=0.00..22.20 rows=3 width=36) (actual rows=35601.00 loops=1)
+                           Filter: ((bucket_month IS NULL) AND (NOT is_customer_total))
+                           Rows Removed by Filter: 56769
+                           Storage: Disk  Maximum Storage: 4096kB
+                           Buffers: temp read=400
+         ->  CTE Scan on spend_groups spend_groups_1  (cost=0.00..22.20 rows=6 width=152) (actual rows=1.00 loops=1)
+               Filter: (customer_id IS NULL)
+               Rows Removed by Filter: 92369
+               Storage: Disk  Maximum Storage: 4096kB
+               Buffers: temp read=396
+ Planning:
+   Buffers: shared hit=6
+ Planning Time: 1.454 ms
+ JIT:
+   Functions: 69
+   Options: Inlining false, Optimization false, Expressions true, Deforming true
+ Execution Time: 2649.671 ms

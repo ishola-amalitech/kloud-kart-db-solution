@@ -1,0 +1,255 @@
+Run 3 rollup
+ Sort  (cost=1703.98..1703.99 rows=6 width=84) (actual rows=91.00 loops=1)
+   Sort Key: path.category_path, path.category_id
+   Sort Method: quicksort  Memory: 34kB
+   Buffers: shared hit=51
+   ->  Hash Left Join  (cost=1702.36..1703.90 rows=6 width=84) (actual rows=91.00 loops=1)
+         Hash Cond: (path.category_id = branch.category_id)
+         Buffers: shared hit=51
+         CTE direct_counts
+           ->  GroupAggregate  (cost=844.97..845.96 rows=57 width=12) (actual rows=61.00 loops=1)
+                 Group Key: low_stock_worklist.category_id
+                 Buffers: shared hit=45
+                 ->  Sort  (cost=844.97..845.11 rows=57 width=4) (actual rows=1654.00 loops=1)
+                       Sort Key: low_stock_worklist.category_id
+                       Sort Method: quicksort  Memory: 49kB
+                       Buffers: shared hit=45
+                       ->  Subquery Scan on low_stock_worklist  (cost=454.68..843.30 rows=57 width=4) (actual rows=1654.00 loops=1)
+                             Buffers: shared hit=45
+                             ->  Hash Right Join  (cost=454.68..842.73 rows=57 width=174) (actual rows=1654.00 loops=1)
+                                   Hash Cond: (walk_3.category_id = product.category_id)
+                                   Filter: ((CASE WHEN (product.category_id IS NULL) THEN 'Uncategorized'::text WHEN (walk_3.category_id IS NULL) THEN 'Missing assigned category'::text ELSE (CASE WHEN walk_3.is_cycle THEN 'Category cycle'::text WHEN (walk_3.next_parent_id IS NOT NULL) THEN 'Missing parent category'::text ELSE NULL::text END) END IS NULL) AND ((product.is_available AND COALESCE(((product.stock_quantity >= 0) AND (product.stock_quantity <= 5)), false)) OR (NOT product.is_available) OR (CASE WHEN (product.stock_quantity IS NULL) THEN 'Unknown stock'::text WHEN (product.stock_quantity < 0) THEN 'Negative stock'::text ELSE NULL::text END IS NOT NULL) OR (CASE WHEN (product.category_id IS NULL) THEN 'Uncategorized'::text WHEN (walk_3.category_id IS NULL) THEN 'Missing assigned category'::text ELSE (CASE WHEN walk_3.is_cycle THEN 'Category cycle'::text WHEN (walk_3.next_parent_id IS NOT NULL) THEN 'Missing parent category'::text ELSE NULL::text END) END IS NOT NULL)))
+                                   Rows Removed by Filter: 15
+                                   Buffers: shared hit=45
+                                   ->  Hash Left Join  (cost=327.28..379.54 rows=1158 width=100) (actual rows=94.00 loops=1)
+                                         Hash Cond: (walk_3.next_parent_id = parent_3.category_id)
+                                         Filter: (walk_3.is_cycle OR (walk_3.next_parent_id IS NULL) OR (parent_3.category_id IS NULL))
+                                         Rows Removed by Filter: 168
+                                         Buffers: shared hit=3
+                                         CTE ancestry
+                                           ->  Recursive Union  (cost=0.00..324.17 rows=2304 width=73) (actual rows=262.00 loops=1)
+                                                 Storage: Memory  Maximum Storage: 52kB
+                                                 Buffers: shared hit=2
+                                                 ->  Seq Scan on categories category  (cost=0.00..3.12 rows=94 width=73) (actual rows=94.00 loops=1)
+                                                       Buffers: shared hit=1
+                                                 ->  Hash Join  (cost=3.12..29.80 rows=221 width=73) (actual rows=42.00 loops=4)
+                                                       Hash Cond: (walk_2.next_parent_id = parent_2.category_id)
+                                                       Buffers: shared hit=1
+                                                       ->  WorkTable Scan on ancestry walk_2  (cost=0.00..18.80 rows=470 width=72) (actual rows=65.00 loops=4)
+                                                             Filter: (NOT is_cycle)
+                                                             Rows Removed by Filter: 0
+                                                       ->  Hash  (cost=1.94..1.94 rows=94 width=18) (actual rows=94.00 loops=1)
+                                                             Buckets: 1024  Batches: 1  Memory Usage: 13kB
+                                                             Buffers: shared hit=1
+                                                             ->  Seq Scan on categories parent_2  (cost=0.00..1.94 rows=94 width=18) (actual rows=94.00 loops=1)
+                                                                   Buffers: shared hit=1
+                                         ->  CTE Scan on ancestry walk_3  (cost=0.00..46.08 rows=2304 width=9) (actual rows=262.00 loops=1)
+                                               Storage: Memory  Maximum Storage: 47kB
+                                               Buffers: shared hit=2
+                                         ->  Hash  (cost=1.94..1.94 rows=94 width=4) (actual rows=94.00 loops=1)
+                                               Buckets: 1024  Batches: 1  Memory Usage: 12kB
+                                               Buffers: shared hit=1
+                                               ->  Seq Scan on categories parent_3  (cost=0.00..1.94 rows=94 width=4) (actual rows=94.00 loops=1)
+                                                     Buffers: shared hit=1
+                                   ->  Hash  (cost=102.34..102.34 rows=2004 width=9) (actual rows=1669.00 loops=1)
+                                         Buckets: 2048  Batches: 1  Memory Usage: 88kB
+                                         Buffers: shared hit=42
+                                         ->  Seq Scan on products product  (cost=0.00..102.34 rows=2004 width=9) (actual rows=1669.00 loops=1)
+                                               Filter: (is_available AND COALESCE(((stock_quantity >= 0) AND (stock_quantity <= 5)), false))
+                                               Rows Removed by Filter: 2354
+                                               Buffers: shared hit=42
+         ->  Merge Left Join  (cost=372.90..374.42 rows=6 width=76) (actual rows=91.00 loops=1)
+               Merge Cond: (path.category_id = direct.category_id)
+               Buffers: shared hit=48
+               ->  Sort  (cost=372.90..372.92 rows=6 width=68) (actual rows=91.00 loops=1)
+                     Sort Key: path.category_id
+                     Sort Method: quicksort  Memory: 32kB
+                     Buffers: shared hit=3
+                     ->  Subquery Scan on path  (cost=370.40..372.82 rows=6 width=68) (actual rows=91.00 loops=1)
+                           Buffers: shared hit=3
+                           ->  Hash Right Join  (cost=370.40..372.76 rows=6 width=100) (actual rows=91.00 loops=1)
+                                 Hash Cond: (parent.category_id = walk.next_parent_id)
+                                 Filter: (walk.is_cycle OR (walk.next_parent_id IS NULL) OR (parent.category_id IS NULL))
+                                 Buffers: shared hit=3
+                                 CTE ancestry
+                                   ->  Recursive Union  (cost=0.00..324.17 rows=2304 width=73) (actual rows=262.00 loops=1)
+                                         Storage: Memory  Maximum Storage: 52kB
+                                         Buffers: shared hit=2
+                                         ->  Seq Scan on categories category_1  (cost=0.00..3.12 rows=94 width=73) (actual rows=94.00 loops=1)
+                                               Buffers: shared hit=1
+                                         ->  Hash Join  (cost=3.12..29.80 rows=221 width=73) (actual rows=42.00 loops=4)
+                                               Hash Cond: (walk_4.next_parent_id = parent_4.category_id)
+                                               Buffers: shared hit=1
+                                               ->  WorkTable Scan on ancestry walk_4  (cost=0.00..18.80 rows=470 width=72) (actual rows=65.00 loops=4)
+                                                     Filter: (NOT is_cycle)
+                                                     Rows Removed by Filter: 0
+                                               ->  Hash  (cost=1.94..1.94 rows=94 width=18) (actual rows=94.00 loops=1)
+                                                     Buckets: 1024  Batches: 1  Memory Usage: 13kB
+                                                     Buffers: shared hit=1
+                                                     ->  Seq Scan on categories parent_4  (cost=0.00..1.94 rows=94 width=18) (actual rows=94.00 loops=1)
+                                                           Buffers: shared hit=1
+                                 ->  Seq Scan on categories parent  (cost=0.00..1.94 rows=94 width=4) (actual rows=94.00 loops=1)
+                                       Buffers: shared hit=1
+                                 ->  Hash  (cost=46.08..46.08 rows=12 width=73) (actual rows=91.00 loops=1)
+                                       Buckets: 1024  Batches: 1  Memory Usage: 20kB
+                                       Buffers: shared hit=2
+                                       ->  CTE Scan on ancestry walk  (cost=0.00..46.08 rows=12 width=73) (actual rows=91.00 loops=1)
+                                             Filter: (CASE WHEN is_cycle THEN 'Category cycle'::text WHEN (next_parent_id IS NOT NULL) THEN 'Missing parent category'::text ELSE NULL::text END IS NULL)
+                                             Rows Removed by Filter: 171
+                                             Storage: Memory  Maximum Storage: 47kB
+                                             Buffers: shared hit=2
+               ->  Materialize  (cost=0.00..1.28 rows=57 width=12) (actual rows=61.00 loops=1)
+                     Storage: Memory  Maximum Storage: 17kB
+                     Buffers: shared hit=45
+                     ->  CTE Scan on direct_counts direct  (cost=0.00..1.14 rows=57 width=12) (actual rows=61.00 loops=1)
+                           Storage: Memory  Maximum Storage: 19kB
+                           Buffers: shared hit=45
+         ->  Hash  (cost=483.37..483.37 rows=10 width=12) (actual rows=89.00 loops=1)
+               Buckets: 1024  Batches: 1  Memory Usage: 12kB
+               Buffers: shared hit=3
+               ->  Subquery Scan on branch  (cost=483.12..483.37 rows=10 width=12) (actual rows=89.00 loops=1)
+                     Buffers: shared hit=3
+                     ->  HashAggregate  (cost=483.12..483.27 rows=10 width=12) (actual rows=89.00 loops=1)
+                           Group Key: ancestor.category_id
+                           Batches: 1  Memory Usage: 32kB
+                           Buffers: shared hit=3
+                           ->  Nested Loop  (cost=329.13..466.62 rows=3300 width=12) (actual rows=197.00 loops=1)
+                                 Buffers: shared hit=3
+                                 ->  Hash Join  (cost=329.13..400.62 rows=330 width=40) (actual rows=61.00 loops=1)
+                                       Hash Cond: (walk_1.category_id = direct_1.category_id)
+                                       Buffers: shared hit=3
+                                       ->  Hash Left Join  (cost=327.28..379.54 rows=1158 width=100) (actual rows=94.00 loops=1)
+                                             Hash Cond: (walk_1.next_parent_id = parent_1.category_id)
+                                             Filter: (walk_1.is_cycle OR (walk_1.next_parent_id IS NULL) OR (parent_1.category_id IS NULL))
+                                             Rows Removed by Filter: 168
+                                             Buffers: shared hit=3
+                                             CTE ancestry
+                                               ->  Recursive Union  (cost=0.00..324.17 rows=2304 width=73) (actual rows=262.00 loops=1)
+                                                     Storage: Memory  Maximum Storage: 52kB
+                                                     Buffers: shared hit=2
+                                                     ->  Seq Scan on categories category_2  (cost=0.00..3.12 rows=94 width=73) (actual rows=94.00 loops=1)
+                                                           Buffers: shared hit=1
+                                                     ->  Hash Join  (cost=3.12..29.80 rows=221 width=73) (actual rows=42.00 loops=4)
+                                                           Hash Cond: (walk_5.next_parent_id = parent_5.category_id)
+                                                           Buffers: shared hit=1
+                                                           ->  WorkTable Scan on ancestry walk_5  (cost=0.00..18.80 rows=470 width=72) (actual rows=65.00 loops=4)
+                                                                 Filter: (NOT is_cycle)
+                                                                 Rows Removed by Filter: 0
+                                                           ->  Hash  (cost=1.94..1.94 rows=94 width=18) (actual rows=94.00 loops=1)
+                                                                 Buckets: 1024  Batches: 1  Memory Usage: 13kB
+                                                                 Buffers: shared hit=1
+                                                                 ->  Seq Scan on categories parent_5  (cost=0.00..1.94 rows=94 width=18) (actual rows=94.00 loops=1)
+                                                                       Buffers: shared hit=1
+                                             ->  CTE Scan on ancestry walk_1  (cost=0.00..46.08 rows=2304 width=41) (actual rows=262.00 loops=1)
+                                                   Storage: Memory  Maximum Storage: 47kB
+                                                   Buffers: shared hit=2
+                                             ->  Hash  (cost=1.94..1.94 rows=94 width=4) (actual rows=94.00 loops=1)
+                                                   Buckets: 1024  Batches: 1  Memory Usage: 12kB
+                                                   Buffers: shared hit=1
+                                                   ->  Seq Scan on categories parent_1  (cost=0.00..1.94 rows=94 width=4) (actual rows=94.00 loops=1)
+                                                         Buffers: shared hit=1
+                                       ->  Hash  (cost=1.14..1.14 rows=57 width=12) (actual rows=61.00 loops=1)
+                                             Buckets: 1024  Batches: 1  Memory Usage: 11kB
+                                             ->  CTE Scan on direct_counts direct_1  (cost=0.00..1.14 rows=57 width=12) (actual rows=61.00 loops=1)
+                                                   Storage: Memory  Maximum Storage: 19kB
+                                 ->  Function Scan on unnest ancestor  (cost=0.00..0.10 rows=10 width=4) (actual rows=3.23 loops=61)
+ Planning Time: 0.669 ms
+ Execution Time: 2.255 ms
+Run 3 worklist
+ Sort  (cost=4794.06..4851.76 rows=23079 width=161) (actual rows=1713.00 loops=1)
+   Sort Key: product.stock_quantity, product.product_id
+   Sort Method: quicksort  Memory: 276kB
+   Buffers: shared hit=45
+   ->  Hash Right Join  (cost=459.80..1227.99 rows=23079 width=161) (actual rows=1713.00 loops=1)
+         Hash Cond: (walk.category_id = product.category_id)
+         Filter: ((product.is_available AND COALESCE(((product.stock_quantity >= 0) AND (product.stock_quantity <= 5)), false)) OR (NOT product.is_available) OR (CASE WHEN (product.stock_quantity IS NULL) THEN 'Unknown stock'::text WHEN (product.stock_quantity < 0) THEN 'Negative stock'::text ELSE NULL::text END IS NOT NULL) OR (CASE WHEN (product.category_id IS NULL) THEN 'Uncategorized'::text WHEN (walk.category_id IS NULL) THEN 'Missing assigned category'::text ELSE (CASE WHEN walk.is_cycle THEN 'Category cycle'::text WHEN (walk.next_parent_id IS NOT NULL) THEN 'Missing parent category'::text ELSE NULL::text END) END IS NOT NULL))
+         Rows Removed by Filter: 2310
+         Buffers: shared hit=45
+         ->  Hash Left Join  (cost=327.28..382.44 rows=1158 width=100) (actual rows=94.00 loops=1)
+               Hash Cond: (walk.next_parent_id = parent.category_id)
+               Filter: (walk.is_cycle OR (walk.next_parent_id IS NULL) OR (parent.category_id IS NULL))
+               Rows Removed by Filter: 168
+               Buffers: shared hit=3
+               CTE ancestry
+                 ->  Recursive Union  (cost=0.00..324.17 rows=2304 width=73) (actual rows=262.00 loops=1)
+                       Storage: Memory  Maximum Storage: 52kB
+                       Buffers: shared hit=2
+                       ->  Seq Scan on categories category  (cost=0.00..3.12 rows=94 width=73) (actual rows=94.00 loops=1)
+                             Buffers: shared hit=1
+                       ->  Hash Join  (cost=3.12..29.80 rows=221 width=73) (actual rows=42.00 loops=4)
+                             Hash Cond: (walk_1.next_parent_id = parent_1.category_id)
+                             Buffers: shared hit=1
+                             ->  WorkTable Scan on ancestry walk_1  (cost=0.00..18.80 rows=470 width=72) (actual rows=65.00 loops=4)
+                                   Filter: (NOT is_cycle)
+                                   Rows Removed by Filter: 0
+                             ->  Hash  (cost=1.94..1.94 rows=94 width=18) (actual rows=94.00 loops=1)
+                                   Buckets: 1024  Batches: 1  Memory Usage: 13kB
+                                   Buffers: shared hit=1
+                                   ->  Seq Scan on categories parent_1  (cost=0.00..1.94 rows=94 width=18) (actual rows=94.00 loops=1)
+                                         Buffers: shared hit=1
+               ->  CTE Scan on ancestry walk  (cost=0.00..46.08 rows=2304 width=73) (actual rows=262.00 loops=1)
+                     Storage: Memory  Maximum Storage: 47kB
+                     Buffers: shared hit=2
+               ->  Hash  (cost=1.94..1.94 rows=94 width=4) (actual rows=94.00 loops=1)
+                     Buckets: 1024  Batches: 1  Memory Usage: 12kB
+                     Buffers: shared hit=1
+                     ->  Seq Scan on categories parent  (cost=0.00..1.94 rows=94 width=4) (actual rows=94.00 loops=1)
+                           Buffers: shared hit=1
+         ->  Hash  (cost=82.23..82.23 rows=4023 width=32) (actual rows=4023.00 loops=1)
+               Buckets: 4096  Batches: 1  Memory Usage: 293kB
+               Buffers: shared hit=42
+               ->  Seq Scan on products product  (cost=0.00..82.23 rows=4023 width=32) (actual rows=4023.00 loops=1)
+                     Buffers: shared hit=42
+ Planning Time: 0.402 ms
+ Execution Time: 2.104 ms
+Run 3 branch
+ Sort  (cost=515.58..515.58 rows=1 width=161) (actual rows=514.00 loops=1)
+   Sort Key: product.stock_quantity, product.product_id
+   Sort Method: quicksort  Memory: 97kB
+   Buffers: shared hit=45
+   ->  Hash Join  (cost=402.34..515.57 rows=1 width=161) (actual rows=514.00 loops=1)
+         Hash Cond: (product.category_id = category.category_id)
+         Join Filter: ((CASE WHEN (product.category_id IS NULL) THEN 'Uncategorized'::text WHEN (category.category_id IS NULL) THEN 'Missing assigned category'::text ELSE category.hierarchy_issue END IS NULL) AND ((product.is_available AND COALESCE(((product.stock_quantity >= 0) AND (product.stock_quantity <= 5)), false)) OR (NOT product.is_available) OR (CASE WHEN (product.stock_quantity IS NULL) THEN 'Unknown stock'::text WHEN (product.stock_quantity < 0) THEN 'Negative stock'::text ELSE NULL::text END IS NOT NULL) OR (CASE WHEN (product.category_id IS NULL) THEN 'Uncategorized'::text WHEN (category.category_id IS NULL) THEN 'Missing assigned category'::text ELSE category.hierarchy_issue END IS NOT NULL)))
+         Buffers: shared hit=45
+         ->  Seq Scan on products product  (cost=0.00..102.34 rows=2004 width=32) (actual rows=1669.00 loops=1)
+               Filter: (is_available AND COALESCE(((stock_quantity >= 0) AND (stock_quantity <= 5)), false))
+               Rows Removed by Filter: 2354
+               Buffers: shared hit=42
+         ->  Hash  (cost=402.27..402.27 rows=6 width=100) (actual rows=27.00 loops=1)
+               Buckets: 1024  Batches: 1  Memory Usage: 11kB
+               Buffers: shared hit=3
+               ->  Subquery Scan on category  (cost=327.28..402.27 rows=6 width=100) (actual rows=27.00 loops=1)
+                     Buffers: shared hit=3
+                     ->  Hash Left Join  (cost=327.28..402.21 rows=6 width=100) (actual rows=27.00 loops=1)
+                           Hash Cond: (walk.next_parent_id = parent.category_id)
+                           Filter: (walk.is_cycle OR (walk.next_parent_id IS NULL) OR (parent.category_id IS NULL))
+                           Buffers: shared hit=3
+                           CTE ancestry
+                             ->  Recursive Union  (cost=0.00..324.17 rows=2304 width=73) (actual rows=262.00 loops=1)
+                                   Storage: Memory  Maximum Storage: 52kB
+                                   Buffers: shared hit=2
+                                   ->  Seq Scan on categories category_1  (cost=0.00..3.12 rows=94 width=73) (actual rows=94.00 loops=1)
+                                         Buffers: shared hit=1
+                                   ->  Hash Join  (cost=3.12..29.80 rows=221 width=73) (actual rows=42.00 loops=4)
+                                         Hash Cond: (walk_1.next_parent_id = parent_1.category_id)
+                                         Buffers: shared hit=1
+                                         ->  WorkTable Scan on ancestry walk_1  (cost=0.00..18.80 rows=470 width=72) (actual rows=65.00 loops=4)
+                                               Filter: (NOT is_cycle)
+                                               Rows Removed by Filter: 0
+                                         ->  Hash  (cost=1.94..1.94 rows=94 width=18) (actual rows=94.00 loops=1)
+                                               Buckets: 1024  Batches: 1  Memory Usage: 13kB
+                                               Buffers: shared hit=1
+                                               ->  Seq Scan on categories parent_1  (cost=0.00..1.94 rows=94 width=18) (actual rows=94.00 loops=1)
+                                                     Buffers: shared hit=1
+                           ->  CTE Scan on ancestry walk  (cost=0.00..74.88 rows=12 width=73) (actual rows=27.00 loops=1)
+                                 Filter: (101 = ANY (ancestor_ids))
+                                 Rows Removed by Filter: 235
+                                 Storage: Memory  Maximum Storage: 47kB
+                                 Buffers: shared hit=2
+                           ->  Hash  (cost=1.94..1.94 rows=94 width=4) (actual rows=94.00 loops=1)
+                                 Buckets: 1024  Batches: 1  Memory Usage: 12kB
+                                 Buffers: shared hit=1
+                                 ->  Seq Scan on categories parent  (cost=0.00..1.94 rows=94 width=4) (actual rows=94.00 loops=1)
+                                       Buffers: shared hit=1
+ Planning Time: 0.323 ms
+ Execution Time: 1.004 ms

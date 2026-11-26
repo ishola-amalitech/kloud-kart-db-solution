@@ -1,0 +1,104 @@
+Pair 3 baseline
+ Sort  (cost=84203.87..84859.61 rows=262298 width=50) (actual rows=142.00 loops=1)
+   Sort Key: inventory_discrepancy_worklist.possible_oversell DESC, inventory_discrepancy_worklist.low_stock_differs DESC, inventory_discrepancy_worklist.product_id
+   Sort Method: quicksort  Memory: 36kB
+   Buffers: shared hit=282984
+   ->  Subquery Scan on inventory_discrepancy_worklist  (cost=354.82..51628.93 rows=262298 width=50) (actual rows=142.00 loops=1)
+         Buffers: shared hit=282984
+         ->  Subquery Scan on totals  (cost=354.82..49005.95 rows=262298 width=58) (actual rows=142.00 loops=1)
+               Buffers: shared hit=282984
+               ->  GroupAggregate  (cost=354.82..41792.76 rows=262298 width=52) (actual rows=142.00 loops=1)
+                     Group Key: product.product_id, inventory_log.log_id, inventory_log.stock_after
+                     Filter: ((product.stock_quantity IS NULL) OR (COALESCE((inventory_log.stock_after + COALESCE(sum(log.change_qty) FILTER (WHERE (log.log_id > inventory_log.log_id)), '0'::bigint)), sum(log.change_qty)) IS NULL) OR (product.stock_quantity <> COALESCE((inventory_log.stock_after + COALESCE(sum(log.change_qty) FILTER (WHERE (log.log_id > inventory_log.log_id)), '0'::bigint)), sum(log.change_qty))))
+                     Rows Removed by Filter: 3881
+                     Buffers: shared hit=282984
+                     ->  Incremental Sort  (cost=354.82..31960.12 rows=282366 width=44) (actual rows=282248.00 loops=1)
+                           Sort Key: product.product_id, inventory_log.log_id, inventory_log.stock_after
+                           Presorted Key: product.product_id
+                           Full-sort Groups: 4023  Sort Method: quicksort  Average Memory: 28kB  Peak Memory: 28kB
+                           Pre-sorted Groups: 2979  Sort Method: quicksort  Average Memory: 28kB  Peak Memory: 28kB
+                           Buffers: shared hit=282984
+                           ->  Merge Left Join  (cost=347.86..19691.12 rows=282366 width=44) (actual rows=282248.00 loops=1)
+                                 Merge Cond: (product.product_id = log.product_id)
+                                 Buffers: shared hit=282984
+                                 ->  Merge Left Join  (cost=347.44..519.82 rows=4023 width=36) (actual rows=4023.00 loops=1)
+                                       Merge Cond: (product.product_id = inventory_log.product_id)
+                                       Buffers: shared hit=90
+                                       ->  Index Scan using products_pkey on products product  (cost=0.28..159.79 rows=4023 width=28) (actual rows=4023.00 loops=1)
+                                             Index Searches: 1
+                                             Buffers: shared hit=85
+                                       ->  Unique  (cost=347.16..347.67 rows=102 width=12) (actual rows=2.00 loops=1)
+                                             Buffers: shared hit=5
+                                             ->  Sort  (cost=347.16..347.41 rows=103 width=12) (actual rows=2.00 loops=1)
+                                                   Sort Key: inventory_log.product_id, inventory_log.log_id DESC
+                                                   Sort Method: quicksort  Memory: 25kB
+                                                   Buffers: shared hit=5
+                                                   ->  Bitmap Heap Scan on inventory_log  (cost=4.69..343.71 rows=103 width=12) (actual rows=2.00 loops=1)
+                                                         Recheck Cond: ((reason = 'stock_take'::text) AND (stock_after IS NOT NULL))
+                                                         Heap Blocks: exact=4
+                                                         Buffers: shared hit=5
+                                                         ->  Bitmap Index Scan on inventory_log_verified_count_idx  (cost=0.00..4.66 rows=103 width=0) (actual rows=6.00 loops=1)
+                                                               Index Searches: 1
+                                                               Buffers: shared hit=1
+                                 ->  Index Scan using inventory_log_product_log_idx on inventory_log log  (cost=0.42..15803.90 rows=282366 width=12) (actual rows=282249.00 loops=1)
+                                       Index Searches: 1
+                                       Buffers: shared hit=282894
+ Planning:
+   Buffers: shared hit=16
+ Planning Time: 0.499 ms
+ Execution Time: 201.191 ms
+Pair 3 candidate
+ Sort  (cost=9843.55..9853.55 rows=4003 width=50) (actual rows=142.00 loops=1)
+   Sort Key: (COALESCE((product.is_available AND (product.stock_quantity > 0) AND (COALESCE((count_row.stock_after + COALESCE(movement_totals.net_after_count, '0'::bigint)), movement_totals.logged_net) < product.stock_quantity)), false)) DESC, (((product.stock_quantity IS NOT NULL) AND (COALESCE((count_row.stock_after + COALESCE(movement_totals.net_after_count, '0'::bigint)), movement_totals.logged_net) IS NOT NULL) AND (((product.stock_quantity >= 0) AND (product.stock_quantity <= 5)) <> ((COALESCE((count_row.stock_after + COALESCE(movement_totals.net_after_count, '0'::bigint)), movement_totals.logged_net) >= 0) AND (COALESCE((count_row.stock_after + COALESCE(movement_totals.net_after_count, '0'::bigint)), movement_totals.logged_net) <= 5))))) DESC, product.product_id
+   Sort Method: quicksort  Memory: 36kB
+   Buffers: shared hit=2159
+   CTE latest_count
+     ->  Unique  (cost=347.16..347.67 rows=102 width=12) (actual rows=2.00 loops=1)
+           Buffers: shared hit=5
+           ->  Sort  (cost=347.16..347.41 rows=103 width=12) (actual rows=2.00 loops=1)
+                 Sort Key: inventory_log.product_id, inventory_log.log_id DESC
+                 Sort Method: quicksort  Memory: 25kB
+                 Buffers: shared hit=5
+                 ->  Bitmap Heap Scan on inventory_log  (cost=4.69..343.71 rows=103 width=12) (actual rows=2.00 loops=1)
+                       Recheck Cond: ((reason = 'stock_take'::text) AND (stock_after IS NOT NULL))
+                       Heap Blocks: exact=4
+                       Buffers: shared hit=5
+                       ->  Bitmap Index Scan on inventory_log_verified_count_idx  (cost=0.00..4.66 rows=103 width=0) (actual rows=6.00 loops=1)
+                             Index Searches: 1
+                             Buffers: shared hit=1
+   ->  Hash Left Join  (cost=9027.35..9256.36 rows=4003 width=50) (actual rows=142.00 loops=1)
+         Hash Cond: (product.product_id = movement_totals.product_id)
+         Filter: ((product.stock_quantity IS NULL) OR (COALESCE((count_row.stock_after + COALESCE(movement_totals.net_after_count, '0'::bigint)), movement_totals.logged_net) IS NULL) OR (product.stock_quantity <> COALESCE((count_row.stock_after + COALESCE(movement_totals.net_after_count, '0'::bigint)), movement_totals.logged_net)))
+         Rows Removed by Filter: 3881
+         Buffers: shared hit=2159
+         ->  Hash Left Join  (cost=3.32..101.65 rows=4023 width=36) (actual rows=4023.00 loops=1)
+               Hash Cond: (product.product_id = count_row.product_id)
+               Buffers: shared hit=47
+               ->  Seq Scan on products product  (cost=0.00..82.23 rows=4023 width=28) (actual rows=4023.00 loops=1)
+                     Buffers: shared hit=42
+               ->  Hash  (cost=2.04..2.04 rows=102 width=12) (actual rows=2.00 loops=1)
+                     Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                     Buffers: shared hit=5
+                     ->  CTE Scan on latest_count count_row  (cost=0.00..2.04 rows=102 width=12) (actual rows=2.00 loops=1)
+                           Storage: Memory  Maximum Storage: 17kB
+                           Buffers: shared hit=5
+         ->  Hash  (cost=8973.59..8973.59 rows=4036 width=20) (actual rows=4134.00 loops=1)
+               Buckets: 8192 (originally 4096)  Batches: 1 (originally 1)  Memory Usage: 242kB
+               Buffers: shared hit=2112
+               ->  Subquery Scan on movement_totals  (cost=8892.87..8973.59 rows=4036 width=20) (actual rows=4134.00 loops=1)
+                     Buffers: shared hit=2112
+                     ->  HashAggregate  (cost=8892.87..8933.23 rows=4036 width=20) (actual rows=4134.00 loops=1)
+                           Group Key: log.product_id
+                           Batches: 1  Memory Usage: 409kB
+                           Buffers: shared hit=2112
+                           ->  Hash Left Join  (cost=3.32..6069.21 rows=282366 width=16) (actual rows=282368.00 loops=1)
+                                 Hash Cond: (log.product_id = count_row_1.product_id)
+                                 Buffers: shared hit=2112
+                                 ->  Seq Scan on inventory_log log  (cost=0.00..4935.66 rows=282366 width=12) (actual rows=282368.00 loops=1)
+                                       Buffers: shared hit=2112
+                                 ->  Hash  (cost=2.04..2.04 rows=102 width=8) (actual rows=2.00 loops=1)
+                                       Buckets: 1024  Batches: 1  Memory Usage: 9kB
+                                       ->  CTE Scan on latest_count count_row_1  (cost=0.00..2.04 rows=102 width=8) (actual rows=2.00 loops=1)
+                                             Storage: Memory  Maximum Storage: 17kB
+ Planning Time: 0.385 ms
+ Execution Time: 54.954 ms

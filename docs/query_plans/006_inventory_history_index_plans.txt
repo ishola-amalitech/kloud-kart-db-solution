@@ -1,0 +1,86 @@
+Pair 3 indexed
+ Limit  (cost=1.27..756.31 rows=26 width=152) (actual rows=26.00 loops=1)
+   Buffers: shared hit=58
+   ->  Nested Loop Left Join  (cost=1.27..2034.07 rows=70 width=152) (actual rows=26.00 loops=1)
+         Buffers: shared hit=58
+         ->  Nested Loop Left Join  (cost=1.12..869.62 rows=70 width=143) (actual rows=26.00 loops=1)
+               Buffers: shared hit=32
+               ->  Nested Loop Left Join  (cost=0.70..290.82 rows=70 width=139) (actual rows=26.00 loops=1)
+                     Buffers: shared hit=32
+                     ->  Index Scan Backward using inventory_log_product_log_idx on inventory_log log  (cost=0.42..281.65 rows=70 width=116) (actual rows=26.00 loops=1)
+                           Index Cond: (product_id = 8174)
+                           Index Searches: 1
+                           Buffers: shared hit=29
+                     ->  Materialize  (cost=0.28..8.30 rows=1 width=23) (actual rows=1.00 loops=26)
+                           Storage: Memory  Maximum Storage: 17kB
+                           Buffers: shared hit=3
+                           ->  Index Scan using products_pkey on products product  (cost=0.28..8.30 rows=1 width=23) (actual rows=1.00 loops=1)
+                                 Index Cond: (product_id = 8174)
+                                 Index Searches: 1
+                                 Buffers: shared hit=3
+               ->  Index Scan using order_items_pkey on order_items item  (cost=0.42..8.27 rows=1 width=8) (actual rows=0.00 loops=26)
+                     Index Cond: (order_item_id = log.order_item_id)
+                     Index Searches: 0
+         ->  Limit  (cost=0.14..8.16 rows=1 width=8) (actual rows=0.00 loops=26)
+               Buffers: shared hit=26
+               ->  Index Scan using inventory_log_verified_count_idx on inventory_log count_row  (cost=0.14..8.16 rows=1 width=8) (actual rows=0.00 loops=26)
+                     Index Cond: ((product_id = log.product_id) AND (log_id <= log.log_id))
+                     Index Searches: 26
+                     Buffers: shared hit=26
+         SubPlan 1
+           ->  Aggregate  (cost=8.45..8.46 rows=1 width=8) (actual rows=1.00 loops=26)
+                 ->  Index Scan using inventory_log_product_log_idx on inventory_log later  (cost=0.42..8.44 rows=1 width=4) (actual rows=0.00 loops=26)
+                       Index Cond: ((product_id = log.product_id) AND (log_id > count_row.log_id) AND (log_id <= log.log_id))
+                       Index Searches: 0
+ Planning Time: 0.270 ms
+ Execution Time: 0.119 ms
+Pair 3 unindexed
+ Limit  (cost=5190.18..58913.38 rows=26 width=152) (actual rows=26.00 loops=1)
+   Buffers: shared hit=2178
+   ->  Nested Loop Left Join  (cost=5190.18..149829.58 rows=70 width=152) (actual rows=26.00 loops=1)
+         Buffers: shared hit=2178
+         ->  Nested Loop Left Join  (cost=5190.03..5785.28 rows=70 width=143) (actual rows=26.00 loops=1)
+               Buffers: shared hit=2152
+               ->  Nested Loop Left Join  (cost=5189.61..5206.48 rows=70 width=139) (actual rows=26.00 loops=1)
+                     Buffers: shared hit=2152
+                     ->  Gather Merge  (cost=5189.33..5197.31 rows=70 width=116) (actual rows=26.00 loops=1)
+                           Workers Planned: 1
+                           Workers Launched: 1
+                           Buffers: shared hit=2149
+                           ->  Sort  (cost=4189.32..4189.42 rows=41 width=116) (actual rows=22.50 loops=2)
+                                 Sort Key: log.log_id DESC
+                                 Sort Method: quicksort  Memory: 28kB
+                                 Buffers: shared hit=2149
+                                 Worker 0:  Sort Method: quicksort  Memory: 26kB
+                                 ->  Parallel Seq Scan on inventory_log log  (cost=0.00..4188.22 rows=41 width=116) (actual rows=50.50 loops=2)
+                                       Filter: (product_id = 8174)
+                                       Rows Removed by Filter: 141134
+                                       Buffers: shared hit=2112
+                     ->  Materialize  (cost=0.28..8.30 rows=1 width=23) (actual rows=1.00 loops=26)
+                           Storage: Memory  Maximum Storage: 17kB
+                           Buffers: shared hit=3
+                           ->  Index Scan using products_pkey on products product  (cost=0.28..8.30 rows=1 width=23) (actual rows=1.00 loops=1)
+                                 Index Cond: (product_id = 8174)
+                                 Index Searches: 1
+                                 Buffers: shared hit=3
+               ->  Index Scan using order_items_pkey on order_items item  (cost=0.42..8.27 rows=1 width=8) (actual rows=0.00 loops=26)
+                     Index Cond: (order_item_id = log.order_item_id)
+                     Index Searches: 0
+         ->  Limit  (cost=0.14..8.16 rows=1 width=8) (actual rows=0.00 loops=26)
+               Buffers: shared hit=26
+               ->  Index Scan using inventory_log_verified_count_idx on inventory_log count_row  (cost=0.14..8.16 rows=1 width=8) (actual rows=0.00 loops=26)
+                     Index Cond: ((product_id = log.product_id) AND (log_id <= log.log_id))
+                     Index Searches: 26
+                     Buffers: shared hit=26
+         SubPlan 1
+           ->  Aggregate  (cost=2049.59..2049.60 rows=1 width=8) (actual rows=1.00 loops=26)
+                 ->  Bitmap Heap Scan on inventory_log later  (cost=38.54..2049.59 rows=1 width=4) (actual rows=0.00 loops=26)
+                       Recheck Cond: ((log_id > count_row.log_id) AND (log_id <= log.log_id))
+                       Filter: (product_id = log.product_id)
+                       ->  Bitmap Index Scan on inventory_log_pkey  (cost=0.00..38.54 rows=1412 width=0) (actual rows=0.00 loops=26)
+                             Index Cond: ((log_id > count_row.log_id) AND (log_id <= log.log_id))
+                             Index Searches: 0
+ Planning:
+   Buffers: shared hit=8
+ Planning Time: 0.293 ms
+ Execution Time: 9.787 ms
