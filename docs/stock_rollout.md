@@ -130,6 +130,10 @@ Use a dedicated role with the permissions needed to read products and invoke
 the migration functions. Those functions run with the caller's permissions,
 so the role also needs the stock and availability updates and the movement-log
 insert and returned log-ID read used by those functions.
+After migration 005, follow the [inventory trail cutover](inventory_trail.md#production-cutover)
+for database roles and controlled writes. The invoker grants above apply
+to migrations 001–003.
+
 The app is a local operator tool without its own login. Keep it bound to
 loopback or place it behind authenticated internal access.
 

@@ -11,6 +11,7 @@ from typing import cast
 import psycopg2
 import streamlit as st
 
+from kloud_kart_db_solution.inventory_trail import render_inventory_trail, trail_installed
 from kloud_kart_db_solution.monday_report import (
     CustomerSummary,
     MondayReport,
@@ -52,6 +53,7 @@ def save_batch(
     availability: bool | None,
     *,
     restock: bool = False,
+    movement_reason: str | None = None,
 ) -> list[int]:
     log_ids: list[int] = []
     # Use one transaction for the whole selection. A stale count or invalid
@@ -59,7 +61,12 @@ def save_batch(
     with closing(psycopg2.connect(dsn, connect_timeout=5)) as conn, conn, conn.cursor() as cursor:
         cursor.execute("SET LOCAL lock_timeout = '5s'")
         for product in sorted(products, key=lambda item: item.product_id):
-            if restock:
+            if movement_reason is not None:
+                cursor.execute(
+                    "SELECT public.record_stock_movement(%s, %s, %s, %s, %s)",
+                    (product.product_id, movement_reason, counts[product.product_id], reason, product.stock),
+                )
+            elif restock:
                 cursor.execute(
                     "SELECT public.restock_paused_product(%s, %s, %s)",
                     (product.product_id, counts[product.product_id], reason),
@@ -69,7 +76,7 @@ def save_batch(
                     "SELECT public.reconcile_negative_stock(%s, %s, %s, %s)",
                     (product.product_id, product.stock, counts[product.product_id], reason),
                 )
-            if restock or availability is None:
+            if movement_reason is not None or restock or availability is None:
                 row = cast(tuple[int], cursor.fetchone())
                 log_ids.append(row[0])
             if availability is not None:
@@ -89,13 +96,18 @@ def main() -> None:
         st.error("Set DATABASE_URL in the environment file before launching the app.")
         return
 
-    stock_tab, exports_tab, low_stock_tab = st.tabs(["Stock reconciliation", "Monday exports", "Low stock"])
+    has_trail = trail_installed(dsn)
+    stock_tab, exports_tab, low_stock_tab, trail_tab = st.tabs(
+        ["Stock reconciliation", "Monday exports", "Low stock", "Inventory trail"]
+    )
     with stock_tab:
-        render_stock_reconciliation(dsn)
+        render_stock_reconciliation(dsn, has_trail=has_trail)
     with exports_tab:
         render_monday_exports(dsn)
     with low_stock_tab:
         render_stock_rollup(dsn)
+    with trail_tab:
+        render_inventory_trail(dsn, has_trail=has_trail)
 
 
 def render_monday_exports(dsn: str) -> None:
@@ -320,7 +332,7 @@ def render_monday_preview(report: MondayReport) -> None:
     )
 
 
-def render_stock_reconciliation(dsn: str) -> None:
+def render_stock_reconciliation(dsn: str, *, has_trail: bool) -> None:
     # Keep the displayed balances until refresh or a successful write. A
     # Streamlit rerun on submit must use the counts the operator reviewed.
     if st.button("Refresh products"):
@@ -363,7 +375,7 @@ def render_stock_reconciliation(dsn: str) -> None:
     selected = select_worklist_products(products, version, scope)
     if selected:
         with st.container(border=True):
-            edit_products(dsn, version, scope, selected)
+            edit_products(dsn, version, scope, selected, has_trail=has_trail)
 
 
 def select_worklist_products(products: list[Product], version: int, scope: str) -> list[Product]:
@@ -409,10 +421,10 @@ def select_worklist_products(products: list[Product], version: int, scope: str) 
     table = worklist.dataframe(  # pyright: ignore[reportUnknownMemberType]
         [
             {
-                "ID": product.product_id,
-                "Product": product.name,
-                "Recorded stock": product.stock,
-                "Availability": "On sale" if product.available else "Paused",
+                "product_id": product.product_id,
+                "product_name": product.name,
+                "stock_quantity": product.stock,
+                "is_available": product.available,
             }
             for product in page_products
         ],
@@ -428,14 +440,26 @@ def select_worklist_products(products: list[Product], version: int, scope: str) 
     return [product for product in products if product.product_id in selected_ids]
 
 
-def edit_products(dsn: str, version: int, scope: str, selected: list[Product]) -> None:
+def edit_products(
+    dsn: str, version: int, scope: str, selected: list[Product], *, has_trail: bool
+) -> None:
     st.subheader(f"Update {len(selected):,} selected product(s)")
     with st.expander("Review selected products"):
         for product in selected:
             st.text(f"{product.label} · stock {product.stock}")
 
     # A batch can only use an action that applies to every selected row.
-    if all(not product.available and product.stock is not None and product.stock < 0 for product in selected):
+    if has_trail:
+        actions: list[str] = []
+        if all(not product.available for product in selected):
+            actions.append("Record physical counts")
+        if all(product.available for product in selected):
+            actions.append("Pause sales")
+        if all(product.stock is not None and product.stock >= 0 for product in selected):
+            actions.extend(["Receive delivery", "Return to sellable stock", "Record damage"])
+            if all(not product.available for product in selected):
+                actions.extend(["Resume sales", "Add stock and resume"])
+    elif all(not product.available and product.stock is not None and product.stock < 0 for product in selected):
         actions = ["Record physical counts"]
     elif all(not product.available and product.stock is not None and product.stock >= 0 for product in selected):
         actions = ["Resume sales", "Add stock and resume", "Add stock and keep paused"]
@@ -445,23 +469,50 @@ def edit_products(dsn: str, version: int, scope: str, selected: list[Product]) -
         st.info("Select products that can share an action. Paused products with unknown stock need a verified balance.")
         return
 
-    action = st.radio("Action", actions, horizontal=True, key=f"action-{version}-{scope}-{actions[0]}")
+    if not actions:
+        st.info("Select products that can share an action.")
+        return
+    action_help = {
+        "Record physical counts": "Save the actual counted quantity and its stocktake reference. Sales stay paused.",
+        "Pause sales": "Stop checkout for the selected products. The stock quantity stays the same.",
+        "Receive delivery": "Add the units received and record the delivery reference.",
+        "Return to sellable stock": "Add returned units that are ready to sell and record the return reference.",
+        "Record damage": "Subtract damaged units and record why they were removed.",
+        "Resume sales": "Allow checkout again using the current balance.",
+        "Add stock and resume": "Record incoming stock and resume sales in the same transaction.",
+        "Add stock and keep paused": "Record incoming stock while keeping sales paused.",
+    }
+    action = st.radio(
+        "Action", actions, horizontal=True, key=f"action-{version}-{scope}-{actions[0]}",
+        help="\n\n".join(f"**{name}** — {action_help[name]}" for name in actions),
+    )
     restock = action.startswith("Add stock")
+    movement_reason = {
+        "Record physical counts": "stock_take",
+        "Receive delivery": "restock",
+        "Add stock and resume": "restock",
+        "Return to sellable stock": "return",
+        "Record damage": "damage",
+    }.get(action) if has_trail else None
     record_count = action == "Record physical counts"
-    needs_quantity = record_count or restock
+    needs_quantity = record_count or restock or movement_reason is not None
 
     counts: dict[int, int] = {}
     reason = ""
     with st.form(f"edit-{version}-{scope}-{action}"):
         if needs_quantity:
-            if restock:
+            if restock or movement_reason == "restock":
                 st.caption("Enter the units received for each product. These units are added to current stock.")
-            else:
+            elif record_count:
                 st.caption("Enter a verified count for each product. Products stay paused after saving.")
+            field = {
+                "damage": "Damaged units",
+                "return": "Sellable units returned",
+            }.get(movement_reason or "", "Physical count" if record_count else "Units to add")
             for product in selected:
                 count = st.number_input(
-                    f"{'Units to add' if restock else 'Physical count'} · {product.label}",
-                    min_value=1 if restock else 0,
+                    f"{field} · {product.label}",
+                    min_value=0 if record_count else 1,
                     max_value=2_147_483_647,
                     step=1,
                     value=None,
@@ -469,21 +520,24 @@ def edit_products(dsn: str, version: int, scope: str, selected: list[Product]) -
                 )
                 if count is not None:
                     counts[product.product_id] = int(count)
-            reason = st.text_input("Reason or delivery reference" if restock else "Reason or stocktake reference")
+            reason = st.text_input("Stocktake reference" if record_count else "Reason or source reference")
         else:
             st.write(f"{action} for {len(selected)} selected product(s).")
         submitted = st.form_submit_button(action, type="primary")
 
     if not submitted:
         return
-    keep_availability = record_count or action == "Add stock and keep paused"
+    keep_availability = (needs_quantity and action != "Add stock and resume")
     availability = None if keep_availability else action != "Pause sales"
     if needs_quantity and (len(counts) != len(selected) or not reason.strip()):
         st.error("Enter a quantity for every selected product and provide a reason.")
         return
 
     try:
-        log_ids = save_batch(dsn, selected, counts, reason, availability, restock=restock)
+        log_ids = save_batch(
+            dsn, selected, counts, reason, availability,
+            restock=restock, movement_reason=movement_reason,
+        )
     except psycopg2.Error as error:
         if error.pgcode == "42883" and restock:
             st.error("Apply migration 003 to this database before adding stock.")
@@ -497,6 +551,7 @@ def edit_products(dsn: str, version: int, scope: str, selected: list[Product]) -
         feedback += " Inventory log IDs: " + ", ".join(map(str, log_ids))
     st.session_state["inventory_feedback"] = feedback
     st.session_state.pop("inventory_snapshot", None)
+    st.session_state.pop("discrepancy_snapshot", None)
     st.rerun()
 
 
