@@ -1,4 +1,4 @@
-# ADR-007: Compare recorded stock with movements since a verified physical count
+# ADR-008: Compare recorded stock with movements since a verified physical count
 
 **Status:** Accepted · **Date:** 2026-11-26 · **Deciders:** Lab implementation team
 

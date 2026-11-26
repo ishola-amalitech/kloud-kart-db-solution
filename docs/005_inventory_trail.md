@@ -125,5 +125,5 @@ The migration preserves the **262,088** imported sale movements without verified
 
 ## Related decisions
 
-- [ADR-006 · Route stock changes through database functions and restrict direct writes](adr/005-adr-006-controlled-stock-writes.md)
-- [ADR-007 · Compare recorded stock with movements since a verified physical count](adr/005-adr-007-verified-stock-counts.md)
+- [ADR-007 · Route stock changes through database functions and restrict direct writes](adr/005-adr-007-controlled-stock-writes.md)
+- [ADR-008 · Compare recorded stock with movements since a verified physical count](adr/005-adr-008-verified-stock-counts.md)

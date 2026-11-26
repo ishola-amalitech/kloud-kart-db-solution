@@ -11,6 +11,7 @@ and catalog problems that could otherwise hide items from a category rollup.
 - [How the views work](#how-the-views-work)
 - [Install and verify](#install-and-verify)
 - [Seeded test results](#seeded-test-results)
+- [Related decisions](#related-decisions)
 
 ## Use the app
 
@@ -125,3 +126,8 @@ category issues and 14 paused products. PostgreSQL recorded execution times of
 about **3.4 ms** for the category rollup and **4.7 ms** for the worklist.
 The app's data load, including the connection and both reads, took about
 **26 ms** in a local rehearsal. These timings are for the seeded test database.
+
+## Related decisions
+
+- [ADR-005 · Walk category ancestry recursively and count each product once per branch](adr/004-adr-005-recursive-category-rollup.md)
+- [ADR-006 · Flag available products with zero to five recorded units for reorder review](adr/004-adr-006-reorder-candidate-rules.md)

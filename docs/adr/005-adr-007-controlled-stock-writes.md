@@ -1,4 +1,4 @@
-# ADR-006: Route stock changes through database functions and restrict direct writes
+# ADR-007: Route stock changes through database functions and restrict direct writes
 
 **Status:** Accepted · **Date:** 2026-11-26 · **Deciders:** Lab implementation team
 
