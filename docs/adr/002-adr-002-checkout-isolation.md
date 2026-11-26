@@ -2,6 +2,8 @@
 
 **Status:** Accepted · **Date:** 2026-11-25 · **Deciders:** Lab implementation team
 
+[Stage 002 · Stock reconciliation and safe checkout](../002_stock_rollout.md)
+
 ## Context
 
 The lab requires exactly one of two competing buyers to get the last unit and a clear out-of-stock response for the other. Kloud Kart expects up to 400 attempts in ten seconds for one product, and the supplied race harness must run unchanged.

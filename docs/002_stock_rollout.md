@@ -130,7 +130,7 @@ Use a dedicated role with the permissions needed to read products and invoke
 the migration functions. Those functions run with the caller's permissions,
 so the role also needs the stock and availability updates and the movement-log
 insert and returned log-ID read used by those functions.
-After migration 005, follow the [inventory trail cutover](inventory_trail.md#production-cutover)
+After migration 005, follow the [inventory trail cutover](005_inventory_trail.md#production-cutover)
 for database roles and controlled writes. The invoker grants above apply
 to migrations 001–003.
 
@@ -221,6 +221,10 @@ that migration. Resume checkout only after verifying the intended sale path.
 | `003_restock_paused_products.sql` | Adds `restock_paused_product`, which increments stock and records a positive movement in one transaction. | Uses the availability flag and inventory log ID default from migration 001. For a database already on migration 002, apply 003 by itself. |
 
 ### Checkout decisions
+
+- [ADR-001 · Pause and reconcile products with negative stock before enforcing a nonnegative balance](adr/002-adr-001-reconcile-negative-stock.md)
+- [ADR-002 · Use READ COMMITTED and a conditional stock update for checkout](adr/002-adr-002-checkout-isolation.md)
+- [ADR-003 · Commit the stock deduction, order, order item, and sale movement in one transaction](adr/002-adr-003-atomic-checkout.md)
 
 The stock update checks availability and quantity while claiming the product
 row. PostgreSQL rechecks those conditions after a competing transaction

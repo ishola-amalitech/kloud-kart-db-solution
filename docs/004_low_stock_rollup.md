@@ -16,7 +16,7 @@ and catalog problems that could otherwise hide items from a category rollup.
 
 Run `uv run kk-app` from the repository root. Open **Low stock** and select
 **Load low-stock report**. The app uses the configured `DATABASE_URL` and
-requires migration 004. [Connection settings](stock_rollout.md#connection-settings)
+requires migration 004. [Connection settings](002_stock_rollout.md#connection-settings)
 
 | Task | How to do it |
 | --- | --- |
@@ -35,7 +35,7 @@ report** before acting on an older snapshot, especially during a sale.
 
 | Rule | Meaning |
 | --- | --- |
-| Reorder candidate | Available for sale with **0–5 recorded units**, inclusive. Five is the working threshold from the [diagnosis](data_integrity_diagnosis.md). Treat it as a review threshold. Order quantities depend on demand, lead times, and incoming stock. |
+| Reorder candidate | Available for sale with **0–5 recorded units**, inclusive. Five is the working threshold from the [diagnosis](001_data_integrity_diagnosis.md). Treat it as a review threshold. Order quantities depend on demand, lead times, and incoming stock. |
 | Out of stock on sale | A reorder candidate with zero recorded units. |
 | Pause or stock issue | Paused products go to Exceptions, including balances provisionally set to zero during reconciliation. Unknown and negative balances also go to Exceptions for review. |
 | Category issue | Missing assignment, missing category, missing parent, or a cycle. An otherwise eligible product still counts in the store-wide reorder total and appears in Exceptions. It receives no branch count until its category path is valid. |
@@ -68,7 +68,7 @@ read, so they need no background refresh job.
 
 From the repository root, start the seeded test database with
 `uv run kk-test-db`. For a fresh database, follow the
-[seed and migration sequence](stock_rollout.md#rehearse-from-an-empty-test-database)
+[seed and migration sequence](002_stock_rollout.md#rehearse-from-an-empty-test-database)
 first. Install [migration 004](../scripts/migrations/004_low_stock_rollup.sql)
 once per database after migration 001 has added `is_available`.
 

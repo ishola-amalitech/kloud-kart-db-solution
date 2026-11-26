@@ -2,6 +2,8 @@
 
 **Status:** Accepted · **Date:** 2026-11-25 · **Deciders:** Lab implementation team
 
+[Stage 002 · Stock reconciliation and safe checkout](../002_stock_rollout.md)
+
 ## Context
 
 The audit found 14 products with recorded stock from −4 to −1, together 27 units below zero. These values identified which products needed a stocktake. The extract could establish neither the physical counts nor the cause of the discrepancies. The rollout must work against Kloud Kart's existing live database.

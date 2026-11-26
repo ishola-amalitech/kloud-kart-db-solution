@@ -2,6 +2,8 @@
 
 **Status:** Accepted · **Date:** 2026-11-25 · **Deciders:** Lab implementation team
 
+[Stage 003 · Monday customer spending report](../003_monday_report.md)
+
 ## Context
 
 Adwoa needs a weekly customer-spending report with totals, monthly history,
@@ -11,7 +13,7 @@ date boundaries open. The audit measured a difference of **6,888 orders** and
 scenario when it compared the proposed completion rule with exact
 `completed` matching. It also found **114 fully priced orders** in that
 window whose recorded totals differ from their line sums. The extract does
-not identify which differences reflect valid adjustments. [Data integrity diagnosis](../data_integrity_diagnosis.md)
+not identify which differences reflect valid adjustments. [Data integrity diagnosis](../001_data_integrity_diagnosis.md)
 
 ## Decision
 

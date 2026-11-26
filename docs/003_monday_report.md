@@ -21,7 +21,7 @@ it. Spend uses the recorded `orders.total_amount`. The cutoff is exclusive
 at midnight on the selected date, using the stored order dates’ clock.
 The monthly window covers the 12 complete calendar months before the cutoff
 month. For example, a cutoff of **2027-08-21** shows **August 2026 through
-July 2027**. See [ADR-004](adr/004-monday-report-business-rules.md)
+July 2027**. See [ADR-004](adr/003-adr-004-monday-report-business-rules.md)
 for the alternatives and why we chose these rules.
 
 | Figure | Calculation |
@@ -108,7 +108,7 @@ totals. Download either CSV below the preview. Preview filters and sorts leave
 the download contents intact.
 
 To create both files from the terminal, use the same configured
-`DATABASE_URL`. See [connection settings](stock_rollout.md#connection-settings).
+`DATABASE_URL`. See [connection settings](002_stock_rollout.md#connection-settings).
 
 ```bash
 output_dir=$(mktemp -d)

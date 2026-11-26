@@ -2,6 +2,8 @@
 
 **Status:** Accepted · **Date:** 2026-11-25 · **Deciders:** Lab implementation team
 
+[Stage 002 · Stock reconciliation and safe checkout](../002_stock_rollout.md)
+
 ## Context
 
 Nana needs an inventory trail that shows which purchase caused each stock deduction. The baseline extract contains 262,088 sale movements without an enforced link to a purchase. The supplied race harness also expects successful checkouts to leave sale movements in the log.

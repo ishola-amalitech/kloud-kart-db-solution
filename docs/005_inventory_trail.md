@@ -8,6 +8,7 @@ Rollout and operating guide for migration 005 and the Inventory trail tab.
 - [Production cutover](#production-cutover)
 - [If cutover fails](#if-cutover-fails)
 - [Historical evidence](#historical-evidence)
+- [Related decisions](#related-decisions)
 
 ## Review and recount stock
 
@@ -43,7 +44,7 @@ LIMIT 25;
 
 ## Rehearse on test
 
-Run from the repository root against the seeded **test** database. For a fresh replay, follow the [stock rollout](stock_rollout.md#rehearse-from-an-empty-test-database) through migration 003, then apply [migration 004](low_stock_rollup.md) before migration 005.
+Run from the repository root against the seeded **test** database. For a fresh replay, follow the [stock rollout](002_stock_rollout.md#rehearse-from-an-empty-test-database) through migration 003, then apply [migration 004](004_low_stock_rollup.md) before migration 005.
 
 ```bash
 uv run kk-test-db
@@ -61,7 +62,7 @@ test_psql < tests/verify_inventory_trail.sql
 uv run kk-app
 ```
 
-The role test exercises checkout, stocktake, delivery, sellable return, damage, a failed batch, and direct-write denial. Rerun [both checkout suites](stock_rollout.md#run-the-checkout-tests) with the test administrator connection. The suites create and remove fixtures. The supplied 400-connection case needs temporary connection headroom on test.
+The role test exercises checkout, stocktake, delivery, sellable return, damage, a failed batch, and direct-write denial. Rerun [both checkout suites](002_stock_rollout.md#run-the-checkout-tests) with the test administrator connection. The suites create and remove fixtures. The supplied 400-connection case needs temporary connection headroom on test.
 
 The seeded test database returned **144** products for review, including **21** flagged for possible oversell and **38** where the low-stock status differs. The original audit's **30** low-stock changes came from the pre-reconciliation data. The current worklist compares the balances and movements after the earlier test corrections. The review criteria identify possible problems for a recount.
 
@@ -121,3 +122,8 @@ If the migration fails inside its transaction, keep writers paused, diagnose the
 ## Historical evidence
 
 The migration preserves the **262,088** imported sale movements without verified purchase links, the **120** movements referencing **111** missing products, and the **90** zero-change `stock_take` entries. It leaves missing references visible in history. For example, movement **982278** still shows missing product **99958**. The product foreign key applies to new references while allowing historical orphans to remain under review. Recover old links only from evidence such as receipts, fulfillment records, and backups. Keep the original entries and their timestamps. New movements record UTC in the existing timestamp format.
+
+## Related decisions
+
+- [ADR-006 · Route stock changes through database functions and restrict direct writes](adr/005-adr-006-controlled-stock-writes.md)
+- [ADR-007 · Compare recorded stock with movements since a verified physical count](adr/005-adr-007-verified-stock-counts.md)

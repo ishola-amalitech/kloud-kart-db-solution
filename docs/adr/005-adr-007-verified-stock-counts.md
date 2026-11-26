@@ -2,12 +2,14 @@
 
 **Status:** Accepted · **Date:** 2026-11-26 · **Deciders:** Lab implementation team
 
+[Stage 005 · Inventory trail rollout](../005_inventory_trail.md)
+
 ## Context
 
 The seeded test database showed **144 products** with discrepancies.
 **21** were still on sale and had a positive recorded balance higher than
 the movement-based comparison. The old log can help decide what to count
-first, but it may be missing an opening balance or movements. [Inventory trail rollout](../inventory_trail.md#rehearse-on-test)
+first, but it may be missing an opening balance or movements. [Inventory trail rollout](../005_inventory_trail.md#rehearse-on-test)
 
 ## Decision
 

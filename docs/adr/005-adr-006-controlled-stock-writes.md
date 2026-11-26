@@ -2,13 +2,15 @@
 
 **Status:** Accepted · **Date:** 2026-11-26 · **Deciders:** Lab implementation team
 
+[Stage 005 · Inventory trail rollout](../005_inventory_trail.md)
+
 ## Context
 
 Checkout already saved the stock deduction, order, and movement together. A
 direct edit to the product balance could still bypass the movement log. The
 audit found **144 products** whose recorded balances differed from their net
 logged movements. Unknown opening balances and gaps in the old history make
-it hard to explain those differences. [Data integrity diagnosis](../data_integrity_diagnosis.md)
+it hard to explain those differences. [Data integrity diagnosis](../001_data_integrity_diagnosis.md)
 
 ## Decision
 
@@ -23,7 +25,7 @@ Grant `kk_checkout` to the checkout login, `kk_stock_operator` to warehouse
 operator logins, and `kk_reporting` to reporting and auditor logins. Give
 checkout and operators permission to call their approved functions without
 granting direct edits to stock or the movement log. Check each production
-login for other grants or role memberships before opening writes. [Inventory trail rollout](../inventory_trail.md#production-cutover)
+login for other grants or role memberships before opening writes. [Inventory trail rollout](../005_inventory_trail.md#production-cutover)
 
 ## Alternatives considered
 
