@@ -1,13 +1,30 @@
 import csv
+import os
+import stat
 import unittest
 from datetime import date
 from decimal import Decimal
 from io import StringIO
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
-from kloud_kart_db_solution.monday_report import ReportFormatError, split_report_csv
+from kloud_kart_db_solution.monday_report import ReportFormatError, split_report_csv, write_private_csv
 
 
 class MondayReportCsvTests(unittest.TestCase):
+    @unittest.skipUnless(os.name == "posix", "POSIX file permissions")
+    def test_export_replaces_an_existing_csv_with_a_private_file(self) -> None:
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "report.csv"
+            path.write_bytes(b"old")
+            path.chmod(0o644)
+
+            write_private_csv(path, b"new")
+
+            self.assertEqual(path.read_bytes(), b"new")
+            self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+            self.assertEqual(list(path.parent.iterdir()), [path])
+
     def test_split_uses_column_names_and_keeps_monthly_history(self) -> None:
         source = [
             "top_100_rank,row_type,customer_id,customer_name,month_start,"

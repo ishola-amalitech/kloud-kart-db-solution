@@ -4,7 +4,7 @@
 -- Prerequisites: load provided_resources/schema.sql and load.sql into a
 -- disposable database. Run this file in a fresh psql session:
 --
---   psql -X -q --csv "$AUDIT_DATABASE_URL" -f scripts/schema_audit.sql
+--   psql -X -q -P pager=off "$AUDIT_DATABASE_URL" -f scripts/schema_audit.sql
 --
 -- Add -v details=/path/to/rows.csv for a row-level export. That file is
 -- written by psql on the client machine and includes actual email values.
@@ -515,6 +515,7 @@ SELECT to_regprocedure('place_order(bigint,bigint,integer)') AS race_test_functi
 -- reason profiles include all rows, so each spelling can be traced by ID.
 -- For profile rows, group_key carries the column name.
 \if :{?details}
+\pset format csv
 \o :details
 SELECT check_id, table_name, row_id, group_key, evidence
 FROM audit_rows

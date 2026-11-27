@@ -50,6 +50,9 @@ Migration 006 is the single new database change retained for the lab.
 It groups movement rows by product before joining them to current stock.
 [Worklist benchmark](#inventory-discrepancy-worklist)
 
+[ADR-009](adr/006-adr-009-aggregate-inventory-before-joining.md) records
+why we kept the rewrite and what would cause us to revisit it.
+
 ## Monday report baseline
 
 A baseline tells us how long today's report takes. We can rerun it after one
@@ -646,7 +649,8 @@ also independently verified the final stock, orders, lines, and
 inventory movements.
 
 Repeat both pairs with the [one-command rehearsal](../README.md#reproduce-the-lab-with-one-command).
-Read `workloads.log` for the checkout timings, visible fixture sales,
+Read `environment.txt` for the source revision and runtime configuration
+and `workloads.log` for the checkout timings, visible fixture sales,
 and actual start and end of each report on the sale clock. The command
 uses the later of `2027-08-21` and tomorrow in UTC as the report cutoff,
 so checkout purchases are eligible even when the rehearsal is repeated

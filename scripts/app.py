@@ -18,7 +18,6 @@ from kloud_kart_db_solution.monday_report import (
     ReportFormatError,
     load_monday_report,
 )
-
 from kloud_kart_db_solution.stock_rollup import render_stock_rollup
 
 
@@ -209,7 +208,11 @@ def render_monday_analytics(report: MondayReport, recorded_spend: Decimal) -> No
     )
 
     concentration.subheader("Top 100 spend concentration")
-    top_spend = sum((row.spend for row in report.customers if row.rank is not None and row.spend is not None), Decimal(0))
+    ranked_spend = (
+        row.spend for row in report.customers
+        if row.rank is not None and row.spend is not None
+    )
+    top_spend = sum(ranked_spend, Decimal(0))
     if recorded_spend.is_finite() and recorded_spend > 0 and top_spend.is_finite():
         concentration.metric("Share of matched customer spend", f"{top_spend / recorded_spend:.1%}")
         concentration.bar_chart(  # pyright: ignore[reportUnknownMemberType]

@@ -78,10 +78,12 @@ The broad seeded test produced **40,420 customer summaries**, **485,040
 monthly rows**, one exception row for **144 unmatched orders**, and
 **100 ranked customers**. The spend and order counts reconciled to the
 [diagnostic subtotals](../scripts/monday_report_customer_spend.sql).
-A fixture verified the tie at rank 100. In the initial PostgreSQL 18 rehearsal,
-the query scanned `orders` once and executed in about **1.85 seconds**.
-Creating both CSV files from the broad seed cutoff took about **3.7 seconds**
-in a later terminal run. Both Kloud Kart Database Solutions downloads matched those files.
+A fixture verified the tie at rank 100. The
+[fresh-load rehearsal](../README.md#reproduce-the-lab-with-one-command) also
+runs a rolled-back fixture against the actual query to check status aliases,
+the exclusive cutoff, opening spend, missing amounts, rank ties, and unmatched
+orders. The [performance guide](006_performance.md#monday-report-baseline)
+records SQL execution separately from CSV generation.
 Confirm the clock used by historical live order writers and measure runtime
 on the live workload before making this a routine production report.
 
@@ -117,4 +119,6 @@ uv run python -m kloud_kart_db_solution.monday_report \
 ```
 
 The command prints the paths for `monday-report-2027-08-21.csv` and
-`monday-top-100-2027-08-21.csv`.
+`monday-top-100-2027-08-21.csv`. It replaces each file atomically and creates
+the files with owner-only permissions on POSIX systems. Keep the pair together
+and share it through approved storage.

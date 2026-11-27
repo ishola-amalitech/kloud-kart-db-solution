@@ -10,6 +10,7 @@ from datetime import date
 from decimal import Decimal
 from io import BytesIO, StringIO, TextIOWrapper
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 
 import psycopg2
 from dotenv import load_dotenv
@@ -19,7 +20,13 @@ from kloud_kart_db_solution import PROJECT_ROOT
 
 REPORT_SQL = PROJECT_ROOT / "scripts" / "monday_report.sql"
 CUSTOMER_REPORT_COLUMNS = (
-    "row_type", "customer_id", "customer_name", "month_start", "order_count", "recorded_spend", "running_spend",
+    "row_type",
+    "customer_id",
+    "customer_name",
+    "month_start",
+    "order_count",
+    "recorded_spend",
+    "running_spend",
 )
 RANK_COLUMN = "top_100_rank"
 
@@ -124,7 +131,9 @@ def split_report_csv(source: Iterable[str], cutoff: date) -> MondayReport:
     positions = {column: index for index, column in enumerate(header)}
     required_columns = (*CUSTOMER_REPORT_COLUMNS, RANK_COLUMN)
     if len(positions) != len(header) or not all(column in positions for column in required_columns):
-        raise ReportFormatError("The report query returned unexpected columns. Check that the app and report SQL match.")
+        raise ReportFormatError(
+            "The report query returned unexpected columns. Check that the app and report SQL match."
+        )
 
     # Read the SQL result by column name. The customer file always uses its
     # own stable layout, even if the query reorders or adds output columns.
@@ -181,7 +190,23 @@ def split_report_csv(source: Iterable[str], cutoff: date) -> MondayReport:
         MonthlyActivity(month, orders, spend)
         for month, (orders, spend) in sorted(activity_by_month.items())
     ]
-    return MondayReport(cutoff, report_csv, top_100_csv, customers, unmatched_orders, unmatched_spend, monthly_activity)
+    return MondayReport(
+        cutoff, report_csv, top_100_csv, customers, unmatched_orders, unmatched_spend, monthly_activity
+    )
+
+
+def write_private_csv(path: Path, data: bytes) -> None:
+    # Stage in the destination directory so replacing the final file is atomic.
+    # The temporary file starts owner-only, including when it replaces a file
+    # created on an earlier run with broader permissions.
+    staging = NamedTemporaryFile(dir=path.parent, prefix=".kk-export-", delete=False)
+    staged_path = Path(staging.name)
+    try:
+        with staging:
+            staging.write(data)
+        staged_path.replace(path)
+    finally:
+        staged_path.unlink(missing_ok=True)
 
 
 def main() -> None:
@@ -202,9 +227,13 @@ def main() -> None:
         report = load_monday_report(dsn, cutoff)
     except ReportFormatError as error:
         parser.exit(1, f"{error}\n")
-    for filename, data in ((report.report_filename, report.report_csv), (report.top_100_filename, report.top_100_csv)):
+    exports = (
+        (report.report_filename, report.report_csv),
+        (report.top_100_filename, report.top_100_csv),
+    )
+    for filename, data in exports:
         path = output_dir / filename
-        path.write_bytes(data)
+        write_private_csv(path, data)
         print(path)
 
 

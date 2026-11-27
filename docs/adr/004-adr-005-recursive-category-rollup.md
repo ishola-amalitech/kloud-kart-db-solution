@@ -1,4 +1,4 @@
-# ADR-005 · Walk category ancestry recursively and count each product once per branch
+# ADR-005: Walk category ancestry recursively and count each product once per branch
 
 **Status:** Accepted · **Date:** 2026-11-26 · **Deciders:** Lab implementation team
 

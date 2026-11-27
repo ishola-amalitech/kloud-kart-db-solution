@@ -31,11 +31,11 @@
 
 | Priority | Finding | Wasted labour or review effort | Direct loss | Risk-weighted exposure |
 |---|---|---|---|---|
-| 1 | [Negative stock and overselling](#overselling-timestamps-and-indexes) | **20–40 staff-minutes** to handle the two reported oversells, assuming 10–20 minutes each for a refund and a customer message. **70–140 staff-minutes** to count the 14 flagged products, assuming 5–10 minutes each for a count and record. | | |
+| 1 | [Negative stock and overselling](#overselling-timestamps-and-indexes) | **20–40 staff-minutes** for incident handling (2 × 10–20 minutes for one refund and customer message per incident). **70–140 staff-minutes** for initial stocktakes (14 × 5–10 minutes to count and record each product). | | |
 | 1 | [Status spellings](#order-statuses) | | | |
 | 1 | [Category rollup omissions](#category-hierarchy) | | | |
 | 1 | [Slow customer-spending report](#overselling-timestamps-and-indexes) | | | |
-| 2 | [Stock differs from the movement ledger](#stock-and-inventory-movements) | **2.5–5 staff-hours** for first counts of the 30 products whose reorder flag changes, using the same 5–10 minutes per product. Remove any products already counted for negative stock when budgeting. | | |
+| 2 | [Stock differs from the movement ledger](#stock-and-inventory-movements) | **2.5–5 staff-hours** for first counts (30 products with a changed reorder flag × 5–10 minutes ÷ 60). Remove any products already counted for negative stock when budgeting. | | |
 | 2 | [Orders point to missing customers](#missing-foreign-keys) | | | |
 | 2 | [Stored totals and line sums differ](#quantities-prices-and-order-totals) | | | |
 | 2 | [Missing line prices](#missing-fields) | | | |
@@ -270,14 +270,20 @@ uses all eligible history before the cutoff. [Decision and comparison query](adr
 Use a disposable PostgreSQL database because the baseline schema drops existing tables. Skip the load if the extract is already loaded.
 
 ```bash
+audit_dir=$(mktemp -d)
 (
+  umask 077
   cd provided_resources
-  psql -X "$AUDIT_DATABASE_URL" -v ON_ERROR_STOP=1 -f schema.sql -f load.sql
+  psql -X -1 "${AUDIT_DATABASE_URL:?Set the disposable audit database URL}" \
+    -v ON_ERROR_STOP=1 -f schema.sql -f load.sql
 )
-psql -X -q --csv "$AUDIT_DATABASE_URL" \
-  -v details=/tmp/kk-audit-rows.csv -f scripts/schema_audit.sql
+(
+  umask 077
+  psql -X -q -P pager=off "${AUDIT_DATABASE_URL:?Set the disposable audit database URL}" \
+    -v details="$audit_dir/kk-audit-rows.csv" -f scripts/schema_audit.sql
+)
 ```
 
 The [audit SQL](../scripts/schema_audit.sql) uses session-local views and a read-only, repeatable-read transaction. It prints counts including zeroes, profiles, indexes, and query plans.
 
-The optional `details` export includes `check_id`, `table_name`, `row_id`, `group_key`, and JSON evidence, including source emails and row IDs for all statuses and reasons. Filter by `check_stock_negative` or `fk_order_items_order` for full row lists. Rows can appear in multiple checks.
+The optional `details` export includes `check_id`, `table_name`, `row_id`, `group_key`, and JSON evidence, including source emails and row IDs for all statuses and reasons. Omit `-v details=...` for a summary-only run. Store the row export in approved private storage. Filter by `check_stock_negative` or `fk_order_items_order` for full row lists. Rows can appear in multiple checks.

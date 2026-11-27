@@ -1,4 +1,4 @@
-# ADR-006 · Flag available products with zero to five recorded units for reorder review
+# ADR-006: Flag available products with zero to five recorded units for reorder review
 
 **Status:** Accepted · **Date:** 2026-11-26 · **Deciders:** Lab implementation team
 
@@ -22,6 +22,10 @@ Evaluate reorder eligibility independently of the category path. Otherwise
 eligible products with missing or invalid category links still count toward
 the store-wide reorder total and appear in Exceptions. Assign them to a branch
 once their category path is valid.
+
+Read current stock when the operator loads or refreshes the report. Refresh
+immediately before placing or approving a reorder. If the refresh fails,
+clear the old list and verify stock with the warehouse before buying.
 
 ## Alternatives considered
 

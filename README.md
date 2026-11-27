@@ -45,9 +45,8 @@ or empty.
 
 ## Reproduce the lab with one command
 
-After placing the client CSVs, run this from the repository root with
-Docker running and `uv`, Bash, and Python
-available, run:
+With the client CSVs in place and Docker running, run this command from the
+repository root. The rehearsal uses Bash, `tar`, `python3`, and `uv` on the host.
 
 ```bash
 bash scripts/rehearse.sh
@@ -56,18 +55,24 @@ bash scripts/rehearse.sh
 The command starts a disposable PostgreSQL 18 container with a random local
 port and password. It checks that the database is empty, loads the supplied
 data, audits the original rows, and applies migrations 001–006. It uses
-simulated counts for the test reconciliation. It runs the inventory and
-category SQL checks, the supplied race suite three times unchanged, and
+simulated counts for the test reconciliation. It checks the inventory trail,
+category rollup, and Monday report, runs the supplied race suite three times unchanged, and measures
 the Monday report and paced checkout both separately and together.
 
 The command prints the evidence directory at startup and on success.
-It contains the PostgreSQL version, baseline audit, migration and test
-logs, both Monday CSVs, and checkout, report, and rollup timings. The
-checkout scenarios take at least 80 seconds. The initial image and
+It contains `environment.txt` (source revision, runtime versions, image ID,
+and Docker host resources), `audit-summary.txt` (separate audit result tables),
+migration and test logs, both Monday CSVs, and checkout, report, and rollup
+timings. The checkout scenarios take at least 80 seconds. The initial image and
 dependency downloads can add time. The container is removed when
 the command exits. Copy the evidence directory out of your system's
-temporary directory if you need to retain it. The report CSVs contain
-customer data, so share them only with people who should see them.
+temporary directory if you need to retain it. Keep the evidence in approved
+storage and share it only with authorized staff. The CSVs contain customer data.
+
+Earlier Git revisions contain the client CSVs. For external distribution,
+use a current source snapshot with the client CSVs excluded or a repository
+whose history has been cleared for sharing. Git ignore rules apply to new
+files in the working tree.
 
 Use this command for a rehearsal. For an approved live rollout, follow
 the [production cutover guide](docs/002_stock_rollout.md#apply-to-production)
@@ -75,7 +80,10 @@ using verified physical counts.
 
 ## Run locally
 
-You’ll need Docker with Compose, `uv`, and Python 3.14 or later.
+You’ll need Docker with Compose, `uv`, and Python 3.14 or later. Python 3.14
+is the tested series. `uv sync --locked` uses the versions in `uv.lock`.
+The `kk-*` commands use paths relative to the source checkout. Install
+with `uv sync --locked` in this repository and run them from the checkout.
 [Supply the client data](#supply-the-client-data) before seeding or
 running the supplied race tests. Run these Bash commands from the repository root.
 
@@ -84,7 +92,7 @@ running the supplied race tests. Run these Bash commands from the repository roo
    test connection is `127.0.0.1:5433`, database `kloudkart`.
 
    ```bash
-   cp -n .env.example .env
+   (umask 077; cp -n .env.example .env)
    ```
 
 2. Install dependencies and start PostgreSQL.
@@ -113,16 +121,17 @@ running the supplied race tests. Run these Bash commands from the repository roo
 
 ## Fresh-load verification
 
-On 27 November 2026, a separate PostgreSQL 18 test instance loaded the
-supplied data and applied migrations 001–006. The stock counts used to
-reconcile the seed were simulated for the test.
+On 27 November 2026, a disposable PostgreSQL 18.7 instance loaded the
+supplied data and applied migrations 001–006. The rehearsal used Docker Desktop
+29.9.3 on x86-64 with 8 CPUs, about 16 GiB RAM available to Docker, and
+Python 3.14.10. The stock counts used to reconcile the seed were simulated.
 
 | Check | Result |
 | --- | --- |
 | Supplied race suite | All four cases passed on three consecutive runs with the supplied script unchanged. Each 400-buyer burst sold 50 units, refused 350, and returned zero errors. |
-| Inventory and category SQL checks | Both passed, including the movement trail and the 12-level category fixture. |
-| Monday report, cutoff 2027-08-21 | 4.23–5.38 seconds across three runs, including generation of both CSVs. Verified 40,420 customer summaries and 100 ranked customers. |
-| Low-stock data load | 30–103 ms across three runs, including connection and both view reads. |
+| Inventory, category, and report fixtures | Passed, including movement links and permissions, a 12-level branch, the exclusive report cutoff, and ranking ties. |
+| Monday report, cutoff 2027-08-21 | 2.85–3.37 seconds across three consecutive runs, including generation of both CSVs. Verified 40,420 customer summaries and 100 ranked customers. |
+| Low-stock data load | 23–26 ms across three runs, including connection and both view reads. |
 
 To reproduce, start with the [empty test database setup](#run-locally).
 After applying migrations 001–006, use the [test connection settings](docs/002_stock_rollout.md#connection-settings)
@@ -132,6 +141,7 @@ Run from the repository root, then restore the original connection limit.
 ```bash
 (
   set -e
+  unset DATABASE_URL
   for run in 1 2 3; do uv run --locked kk-race-test; done
   uv run --locked python -m unittest discover -s tests
 )
@@ -143,8 +153,10 @@ migrations are applied. For the report, follow the [Monday export steps](docs/00
 using cutoff `2027-08-21`. The terminal export also includes time to write the
 CSV files. The timings above are from the local rehearsal.
 
-The [shared-workload rehearsal](docs/006_performance.md#monday-report-during-a-flash-sale)
-also checked 400 paced checkout attempts while the Monday report ran.
+All eight paced scenarios also completed 400 attempts within ten seconds.
+The four overlapping reports took 2.61–4.53 seconds. The two report-only
+baselines for those pairs took 2.86 and 7.37 seconds.
+[Shared-workload method](docs/006_performance.md#monday-report-during-a-flash-sale)
 
 ## Useful commands
 
@@ -157,30 +169,32 @@ also checked 400 paced checkout attempts while the Monday report ran.
 | `uv run kk-flash-sale-test` | Run the separate test that paces about 40 checkout attempts per second for ten seconds. |
 
 Run checkout tests against the test database. They create and remove fixtures.
+An exported `DATABASE_URL` takes precedence over the local `.env` file.
+Use the rehearsal command if you want an isolated target.
 This command opens `psql` directly in the `kloudkart` test database.
 
 ```bash
 uv run kk-test-db-exec sh -ec 'exec psql -X -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
 ```
 
-## Rollout guides
+## Submission map
 
-[Memo to Nana](docs/memo_to_nana.md) summarizes the operational decisions,
-rehearsal results, and checks before launch.
-
-[Improvement beyond the brief](docs/improvement_beyond_the_brief.md) explains
-how Nana and Adwoa can use the Streamlit app in their day-to-day work.
+| Brief deliverable | Where to find it |
+| --- | --- |
+| Written diagnosis | [Stage 001 · Ranked data integrity findings and cost estimates](docs/001_data_integrity_diagnosis.md), with [baseline audit SQL](scripts/schema_audit.sql) |
+| Working SQL solution | [Migrations 001–006](scripts/migrations/), [Monday report query](scripts/monday_report.sql), and [fresh-load rehearsal](#reproduce-the-lab-with-one-command) |
+| Key decisions and trade-offs | [Architecture decision records](docs/adr/) and the rollout guides below |
+| One-page operations memo | [Memo to Nana](docs/memo_to_nana.md) |
+| Implemented improvement | [Operator app and its business value](docs/improvement_beyond_the_brief.md) |
 
 | Stage | Guide |
 | --- | --- |
-| 001 | [Data integrity diagnosis and ranked findings](docs/001_data_integrity_diagnosis.md) |
 | 002 | [Stock reconciliation and safe checkout](docs/002_stock_rollout.md) |
 | 003 | [Monday report rules, calculations, and exports](docs/003_monday_report.md) |
 | 004 | [Low-stock category rollup](docs/004_low_stock_rollup.md) |
 | 005 | [Inventory trail and database permissions](docs/005_inventory_trail.md) |
 | 006 | [Performance experiments and reproduction steps](docs/006_performance.md) |
 
-[Architecture decision records](docs/adr/) explain the choices and trade-offs.
 Deploy to the existing live database only after approval. Start with the
 [stock rollout cutover](docs/002_stock_rollout.md#apply-to-production) and the
 [inventory trail cutover](docs/005_inventory_trail.md#production-cutover).

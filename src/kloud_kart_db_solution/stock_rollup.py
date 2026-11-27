@@ -78,22 +78,32 @@ def render_stock_rollup(dsn: str) -> None:
     st.header("Low stock")
     st.write("Find products to reorder and stock or category records that need review.")
     report = cast(StockRollup | None, st.session_state.get("stock-rollup"))
-    if st.button("Refresh low-stock report" if report else "Load low-stock report", type="primary"):
+    if st.button(
+        "Refresh low-stock report" if report else "Load low-stock report",
+        type="primary",
+        key="refresh-stock-rollup",
+    ):
+        # A failed refresh must clear the previous snapshot and its download.
+        st.session_state.pop("stock-rollup", None)
         try:
             with st.spinner("Reading current stock…"):
                 report = load_stock_rollup(dsn)
         except psycopg2.errors.UndefinedTable:
             st.error("The low-stock views are missing. Apply migration 004 to the app database.")
+            return
         except psycopg2.Error:
             st.error("Could not refresh the low-stock report. Check the connection and view permissions.")
+            return
         else:
             st.session_state["stock-rollup"] = report
             reset_stock_rollup_page()
     if report is None:
         return
 
-    st.caption(f"Snapshot taken {report.captured_at.astimezone(UTC):%d %b %Y at %H:%M:%S} UTC. "
-               "The reorder list uses 5 units or fewer for products on sale.")
+    st.caption(
+        f"Snapshot taken {report.captured_at.astimezone(UTC):%d %b %Y at %H:%M:%S} UTC. "
+        "Refresh before placing or approving a reorder."
+    )
     reorder = [row for row in report.products if row.needs_reorder]
     exceptions = [row for row in report.products if row.needs_review]
     low, empty, review = st.columns(3)

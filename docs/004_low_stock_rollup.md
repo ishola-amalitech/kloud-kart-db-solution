@@ -30,7 +30,9 @@ requires migration 004. [Connection settings](002_stock_rollout.md#connection-se
 The headline metrics cover the whole store. The category selection narrows the
 reorder worklist to that branch. Exceptions are store-wide because products
 with broken category paths may have no valid branch. Choose **Refresh low-stock
-report** before acting on an older snapshot, especially during a sale.
+report** immediately before placing or approving a reorder. Check the displayed
+capture time. If refresh fails, the app clears the old list and its download.
+Wait for a successful refresh or verify available stock with the warehouse.
 
 ## Stock and category rules
 

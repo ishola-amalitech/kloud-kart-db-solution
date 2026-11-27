@@ -32,8 +32,36 @@ if (( ${#missing_files[@]} )); then
     exit 1
 fi
 
+for command in docker tar uv python3; do
+    if ! command -v "$command" >/dev/null; then
+        printf 'Missing required command: %s\n' "$command" >&2
+        exit 1
+    fi
+done
+
+# Include only supplied files in the archive, even if operators keep other
+# extracts under data/. race_test.py runs on the host.
+seed_files=(schema.sql load.sql)
+for file in "${bundle_files[@]}"; do
+    if [[ $file == data/* ]]; then
+        seed_files+=("$file")
+    fi
+done
+
 results=$(mktemp -d "${TMPDIR:-/tmp}/kk-rehearsal.XXXXXX")
 printf 'Rehearsal evidence: %s\n' "$results"
+{
+    date -u '+Started (UTC): %Y-%m-%dT%H:%M:%SZ'
+    uv --version
+    if command -v git >/dev/null && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        printf 'Source commit: '
+        git rev-parse HEAD
+        printf 'Working tree status (empty if clean):\n'
+        git status --short
+    fi
+    docker version --format 'Docker client {{.Client.Version}}, server {{.Server.Version}}'
+    docker info --format 'Docker host: {{.OperatingSystem}}, {{.Architecture}}, {{.NCPU}} CPUs, {{.MemTotal}} bytes RAM'
+} > "$results/environment.txt"
 name="kk-rehearsal-${results##*.}"
 password=$(python3 -c 'import secrets; print(secrets.token_hex(24))')
 container_id=$(POSTGRES_PASSWORD="$password" docker run --detach --rm --name "$name" \
@@ -53,6 +81,8 @@ for attempt in {1..30}; do
 done
 address=$(docker port "$container_id" 5432/tcp)
 export DATABASE_URL="postgresql://kloudkart:$password@$address/kloudkart"
+docker inspect --format 'PostgreSQL image ID: {{.Image}}' "$container_id" >> "$results/environment.txt"
+uv run --locked python --version >> "$results/environment.txt"
 
 psql_test() {
     docker exec -i "$container_id" psql -X -v ON_ERROR_STOP=1 -U kloudkart -d kloudkart "$@"
@@ -61,7 +91,7 @@ psql_test() {
 # The supplied schema drops tables. Check the new database before invoking it.
 [[ $(psql_test -Atc "SELECT count(*) FROM pg_tables WHERE schemaname = 'public'") == 0 ]]
 docker exec "$container_id" postgres --version > "$results/postgres-version.txt"
-tar -C provided_resources -cf - schema.sql load.sql data |
+tar -C provided_resources -cf - "${seed_files[@]}" |
     docker exec -i "$container_id" sh -ec '
         dir=$(mktemp -d)
         cd "$dir"
@@ -70,7 +100,7 @@ tar -C provided_resources -cf - schema.sql load.sql data |
     ' > "$results/load.log" 2>&1
 
 # Audit the original data before applying any changes.
-psql_test -q --csv < scripts/schema_audit.sql > "$results/audit.csv" 2> "$results/audit.log"
+psql_test -q -P pager=off < scripts/schema_audit.sql > "$results/audit-summary.txt" 2> "$results/audit.log"
 printf 'Seeded and audited the original data.\n'
 for migration in scripts/migrations/00*.sql; do
     psql_test < "$migration" > "$results/${migration##*/}.log" 2>&1
@@ -94,6 +124,7 @@ for check in tests/verify_low_stock_rollup.sql tests/verify_inventory_trail.sql;
     psql_test < "$check" > "$results/${check##*/}.log" 2>&1
 done
 uv run --locked python -m unittest discover -s tests > "$results/unit-tests.log" 2>&1
+uv run --locked python tests/verify_monday_report.py > "$results/verify-monday-report.log" 2>&1
 for run in 1 2 3; do
     uv run --locked python provided_resources/race_test.py | tee "$results/race-$run.log"
 done
