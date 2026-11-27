@@ -49,3 +49,8 @@ A written explanation of your key decisions: how you solved the overselling prob
 A one-page memo to Nana: business language, no jargon, what you built and found, what you'd recommend next, and what you couldn't personally stand behind.
 
 One improvement beyond the brief, implemented and justified in terms of what it's worth to Nana or Adwoa.
+
+## Submitted improvement
+
+[Kloud Kart’s Streamlit operator app](docs/improvement_beyond_the_brief.md)
+documents the workflows built for Nana and Adwoa and their operational value.

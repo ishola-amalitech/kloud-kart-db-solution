@@ -77,6 +77,12 @@ uv run kk-test-db-exec sh -ec 'exec psql -X -U "$POSTGRES_USER" -d "$POSTGRES_DB
 
 ## Rollout guides
 
+[Memo to Nana](docs/memo_to_nana.md) summarizes the operational decisions,
+rehearsal results, and checks before launch.
+
+[Improvement beyond the brief](docs/improvement_beyond_the_brief.md) explains
+how Nana and Adwoa can use the Streamlit app in their day-to-day work.
+
 | Stage | Guide |
 | --- | --- |
 | 001 | [Data integrity diagnosis and ranked findings](docs/001_data_integrity_diagnosis.md) |
