@@ -18,7 +18,10 @@ the same item may briefly wait for an earlier sale to clear, so watch
 checkout delays at launch.
 
 The supplied data showed 14 products a combined 27 units below zero.
-Pause sales of those items until staff verify the quantities.
+Pause sales of those items until staff verify the quantities. Budget 70–140
+minutes of staff time for the first counts, assuming five to ten minutes
+per product. The two oversells last month required refunds. The
+financial loss could not be established. [Cost estimates](001_data_integrity_diagnosis.md#business-cost-estimates)
 
 ## Give Adwoa a usable Monday report
 

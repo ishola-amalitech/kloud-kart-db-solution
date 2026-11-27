@@ -9,6 +9,7 @@
 
 ## Table of contents
 
+- [Business cost estimates](#business-cost-estimates)
 - [Ranked impact and proposed fixes](#ranked-impact-and-proposed-fixes)
 - [What the audit covered](#what-the-audit-covered)
 - [Missing foreign keys](#missing-foreign-keys)
@@ -26,15 +27,42 @@
 - [Overselling, timestamps, and indexes](#overselling-timestamps-and-indexes)
 - [Reproduce the audit](#reproduce-the-audit)
 
+## Business cost estimates
+
+| Priority | Finding | Wasted labour or review effort | Direct loss | Risk-weighted exposure |
+|---|---|---|---|---|
+| 1 | [Negative stock and overselling](#overselling-timestamps-and-indexes) | **20–40 staff-minutes** to handle the two reported oversells, assuming 10–20 minutes each for a refund and a customer message. **70–140 staff-minutes** to count the 14 flagged products, assuming 5–10 minutes each for a count and record. | | |
+| 1 | [Status spellings](#order-statuses) | | | |
+| 1 | [Category rollup omissions](#category-hierarchy) | | | |
+| 1 | [Slow customer-spending report](#overselling-timestamps-and-indexes) | | | |
+| 2 | [Stock differs from the movement ledger](#stock-and-inventory-movements) | **2.5–5 staff-hours** for first counts of the 30 products whose reorder flag changes, using the same 5–10 minutes per product. Remove any products already counted for negative stock when budgeting. | | |
+| 2 | [Orders point to missing customers](#missing-foreign-keys) | | | |
+| 2 | [Stored totals and line sums differ](#quantities-prices-and-order-totals) | | | |
+| 2 | [Missing line prices](#missing-fields) | | | |
+| 2 | [Duplicate customer emails](#duplicate-values) | | | |
+| 3 | [Items point to missing orders](#missing-foreign-keys) | | | |
+| 3 | [Missing product and purchase links in the movement log](#inventory-reasons) | | | |
+| 3 | [Repeated order/product lines](#duplicate-values) | | | |
+| 3 | [Missing time-zone information](#overselling-timestamps-and-indexes) | | | |
+| 4 | [Zero-change stock takes and reason codes](#inventory-reasons) | | | |
+| 4 | [NULL root parents and optional inventory notes](#missing-fields) | | | |
+| 4 | [Checks with zero violations](#missing-check-constraints-and-cross-row-validation) | | | |
+
+Blank cells mean the available evidence cannot support an estimate. The filled cells are planning estimates. They assume routine handling of one refund and one message per incident, and a single employee counting and recording readily accessible stock. They cover those tasks only. Use the staff time as the budget until an hourly rate or time sample is available.
+
+- **Wasted labour.** Multiply the number of occurrences by active staff time, then by the full hourly employment cost if available. At 40 minutes each for 52 weekly runs, the old Monday report would take **34 hours 40 minutes of elapsed run time per year** if every run finished in 40 minutes. The brief says some runs do not finish and Adwoa tracks running totals by hand. There is no measured staff time for either task. [Lab brief](../lab_brief.md)
+- **Direct loss.** The brief records **two oversells and two refunds in one month**. The refund amounts, retained fees, and lost profit are unavailable. A refund amount would show cash returned to a customer. Establishing financial loss requires knowing what charges or profit the business actually lost. Differences in recorded spend and order totals below measure reporting impact. [Lab brief](../lab_brief.md)
+- **Risk-weighted exposure.** Multiply the cost per incident by its expected frequency over a stated period. The brief gives a recent incident count and an expected flash-sale load. It gives no reliable annual incident rate, margin per lost sale, or cost per missed reorder. The test data can show which products or reported figures are exposed.
+
 ## Ranked impact and proposed fixes
 
-The [lab brief](../lab_brief.md) makes checkout, reordering, customer spending, and inventory traceability the priorities. Rank by what changes in those workflows. Within the same workflow, use affected products, orders, spend, or staff time to judge the size of the impact.
+The rank reflects which decisions need protection first. Before the flash sale, protect checkout and count stock that may be overstated. Protect the Monday spending figures and reorder list next. Use the measured effect on each workflow to prioritize reviews while the annual financial ranking remains open. [Lab brief](../lab_brief.md)
 
 **Measurement assumptions.** The report scenario covers **21 August 2026 inclusive to 21 August 2027 exclusive**, the trailing 12 months through the extract’s last order date. For comparison, it treats trimmed, lowercased `complete` and `completed` as completed and uses stored order totals. That is a proposed reporting rule. Decide explicitly how to handle shipped, cancelled, and refunded orders before publishing. The reorder scenario uses **5 units or fewer** and traverses categories from valid roots. Monetary values are in the extract’s recorded units. Scenario differences measure what the chosen rule would change. Actual refunds, lost sales, and staff effort need separate evidence.
 
 ### Rank 1 · Act first
 
-| Finding | **Cost** | **Proposed fix and trade-off** |
+| Finding | **Operational impact** | **Proposed fix and trade-off** |
 |---|---|---|
 | [Negative stock and overselling](#overselling-timestamps-and-indexes) | **14 products to count**, with balances a combined **27 units below zero**. The brief reports two oversells last month. The extract cannot link them to these balances or establish refund costs. | Count affected stock and pause those products until verified. Guard checkout with a conditional stock decrement and write the order, line, and movement in the same transaction. Add a nonnegative constraint after reconciling existing balances. Run the supplied race test before the flash sale. Pausing products temporarily reduces availability. |
 | [Status spellings](#order-statuses) | For known customers, exact `completed` matching drops **6,888 orders** and **21,243,400.85** in stored totals relative to the proposed completion rule. This is a conditional difference in the spend report. | Map raw statuses to an approved vocabulary and enforce it on writes. Preserve raw values while validating the mapping. An incorrect mapping could count orders the business excludes. |
@@ -43,7 +71,7 @@ The [lab brief](../lab_brief.md) makes checkout, reordering, customer spending, 
 
 ### Rank 2 · Fix next
 
-| Finding | **Cost** | **Proposed fix and trade-off** |
+| Finding | **Operational impact** | **Proposed fix and trade-off** |
 |---|---|---|
 | [Stock differs from the movement ledger](#stock-and-inventory-movements) | **144 products** differ. Comparing recorded stock with net movements changes the low-stock flag for **30 products** at the test threshold. Physical counts and opening balances are needed to tell which list is right. | Recount those 30 first, reconcile against opening balances and history, and post documented corrections. Update balances and movements together going forward. Replacing stock with an incomplete ledger could introduce new errors. |
 | [Orders point to missing customers](#missing-foreign-keys) | The customer join excludes **13 orders worth 5,554.26** under the proposed report rule. Adwoa cannot attribute that spend to a customer. | Show unmatched spend separately, recover verified customer links, then enforce the foreign key. Guessing a customer could change spend and rank for the wrong person. |
@@ -53,7 +81,7 @@ The [lab brief](../lab_brief.md) makes checkout, reordering, customer spending, 
 
 ### Rank 3 · Investigate
 
-| Finding | **Cost** | **Proposed fix and trade-off** |
+| Finding | **Operational impact** | **Proposed fix and trade-off** |
 |---|---|---|
 | [Items point to missing orders](#missing-foreign-keys) | **692 lines** carry **826,327.80** in priced line value. Missing order headers leave their date, customer, and status unknown, so their effect on the spend report cannot be bounded from the extract. | Recover verified order headers or retain unresolved lines in a review queue. Enforce the order foreign key on new writes and validate historic data after repair. Deleting lines would remove evidence. |
 | [Missing product and purchase links in the movement log](#inventory-reasons) | **120 logs** record **120 units of outward movement** against missing product records. Separately, **262,088 sale movements** lack an enforced purchase link. Investigation time and the number of sales that cannot be traced by other evidence are unknown. | Recover product links where possible. Link future sale movements to the order item in the checkout transaction and enforce product consistency. Time a sample of sale or refund investigations. Leave uncertain historical purchase links unresolved. |
@@ -62,13 +90,13 @@ The [lab brief](../lab_brief.md) makes checkout, reordering, customer spending, 
 
 ### Rank 4 · Record only
 
-| Finding | **Cost** | **Proposed fix or safeguard** |
+| Finding | **Operational impact** | **Proposed fix or safeguard** |
 |---|---|---|
 | [Zero-change stock takes and reason codes](#inventory-reasons) | **90 stock takes** change the balance by **0 units**. The reason profile shows no spelling variants or sign exceptions against the observed rules. | Preserve zero movements for stock takes. Enforce the agreed reason vocabulary and sign rules on new writes. |
 | [NULL root parents and optional inventory notes](#missing-fields) | **7 root categories** legitimately have no parent. **281,927 NULL notes** have no demonstrated workflow cost without a rule requiring notes for a movement reason. | Keep root parents and notes optional. Require notes only for reasons with an explicit audit requirement. |
 | [Checks with zero violations](#missing-check-constraints-and-cross-row-validation) | No measured impact from broken product-to-category or item-to-product references, blank required-text candidates, duplicate sibling names, self-parent links, nonpositive quantities, invalid numeric values, empty orders, missing stock reconciliation inputs, or reversed dates among matched records. | Keep the proposed foreign keys, required-field checks, and quantity or value constraints in the detailed findings. Apply uniqueness, chronology, and order-completeness rules where the workflow calls for them. These checks need no historical cleanup based on this extract. |
 
-**Avoid double-counting.** The same order or product can appear in several findings. Use the number of orders or products someone must review to plan work. Use line counts, status variants, and subgroup totals to explain why each record was flagged.
+**Avoid double-counting.** Count each physical count, order review, or refund once even if several findings flag it. Keep past losses and future exposure separate. Use line counts, status variants, and subgroup totals to explain why each record was flagged.
 
 ## What the audit covered
 
