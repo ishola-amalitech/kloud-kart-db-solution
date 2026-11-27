@@ -18,9 +18,35 @@ The performance rollout cut the median inventory discrepancy query from
 **201.191 ms to 54.375 ms** with identical results.
 [Performance measurements and query plans](docs/006_performance.md)
 
+## Supply the client data
+
+Get the six original CSVs through Kloud Kart's approved file-sharing
+channel and place them in `provided_resources/data/` at the repository
+root. Git already supplies `schema.sql`, `load.sql`, and the unchanged
+`race_test.py`. Use these exact names:
+
+```text
+provided_resources/
+├── schema.sql
+├── load.sql
+├── race_test.py
+└── data/
+    ├── categories.csv
+    ├── customers.csv
+    ├── inventory_log.csv
+    ├── order_items.csv
+    ├── orders.csv
+    └── products.csv
+```
+
+Git ignores `provided_resources/data/`. The rehearsal checks all nine
+files and exits before starting Docker if any are missing, unreadable,
+or empty.
+
 ## Reproduce the lab with one command
 
-From the repository root, with Docker running and `uv`, Bash, and Python
+After placing the client CSVs, run this from the repository root with
+Docker running and `uv`, Bash, and Python
 available, run:
 
 ```bash
@@ -50,7 +76,8 @@ using verified physical counts.
 ## Run locally
 
 You’ll need Docker with Compose, `uv`, and Python 3.14 or later.
-Run these Bash commands from the repository root.
+[Supply the client data](#supply-the-client-data) before seeding or
+running the supplied race tests. Run these Bash commands from the repository root.
 
 1. On a fresh checkout, copy the environment template and set a local test
    password in both `POSTGRES_PASSWORD` and `DATABASE_URL`. The default

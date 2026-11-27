@@ -2,9 +2,37 @@
 # Rebuild the lab in its own disposable PostgreSQL instance and retain evidence.
 set -euo pipefail
 umask 077
-results=$(mktemp -d "${TMPDIR:-/tmp}/kk-rehearsal.XXXXXX")
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.."
 
+# The scripts are tracked and the client CSVs are supplied separately.
+# Check both before creating evidence files or calling Docker.
+bundle_files=(
+    schema.sql
+    load.sql
+    race_test.py
+    data/categories.csv
+    data/customers.csv
+    data/inventory_log.csv
+    data/order_items.csv
+    data/orders.csv
+    data/products.csv
+)
+missing_files=()
+for file in "${bundle_files[@]}"; do
+    path="provided_resources/$file"
+    if [[ ! -f $path || ! -r $path || ! -s $path ]]; then
+        missing_files+=("$path")
+    fi
+done
+if (( ${#missing_files[@]} )); then
+    printf 'Required files missing, unreadable, or empty:\n' >&2
+    printf '  %s\n' "${missing_files[@]}" >&2
+    printf 'Restore any missing scripts from Git and supply the CSVs in provided_resources/data/.\n' >&2
+    printf 'See the "Supply the client data" section of README.md.\n' >&2
+    exit 1
+fi
+
+results=$(mktemp -d "${TMPDIR:-/tmp}/kk-rehearsal.XXXXXX")
 printf 'Rehearsal evidence: %s\n' "$results"
 name="kk-rehearsal-${results##*.}"
 password=$(python3 -c 'import secrets; print(secrets.token_hex(24))')
