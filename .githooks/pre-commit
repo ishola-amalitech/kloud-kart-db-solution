@@ -1,0 +1,10 @@
+#!/bin/sh
+# Inspect the Git index so the check also catches force-added ignored files.
+set -eu
+
+tracked_data=$(git ls-files -- provided_resources/data/)
+if [ -n "$tracked_data" ]; then
+    printf 'Client data must stay outside Git. Remove these paths from the index before committing:\n%s\n' \
+        "$tracked_data" >&2
+    exit 1
+fi

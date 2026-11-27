@@ -9,13 +9,13 @@ dependencies = [
 ]
 
 [project.scripts]
-kk-test-db = "kloud_kart_db_solution:test_db"
-kk-prod-db = "kloud_kart_db_solution:prod_db"
-kk-test-db-exec = "kloud_kart_db_solution:test_db_exec"
-kk-prod-db-exec = "kloud_kart_db_solution:prod_db_exec"
-kk-race-test = "kloud_kart_db_solution:race_test"
-kk-flash-sale-test = "kloud_kart_db_solution:flash_sale_test"
-kk-app = "kloud_kart_db_solution:reconcile_app"
+kk-test-db = "kloud_kart_db_solution.cli:test_db"
+kk-prod-db = "kloud_kart_db_solution.cli:prod_db"
+kk-test-db-exec = "kloud_kart_db_solution.cli:test_db_exec"
+kk-prod-db-exec = "kloud_kart_db_solution.cli:prod_db_exec"
+kk-race-test = "kloud_kart_db_solution.cli:race_test"
+kk-flash-sale-test = "kloud_kart_db_solution.cli:flash_sale_test"
+kk-app = "kloud_kart_db_solution.cli:reconcile_app"
 
 [build-system]
 requires = ["uv_build>=0.13,<0.14"]

@@ -91,8 +91,14 @@ def render_stock_rollup(dsn: str) -> None:
         except psycopg2.errors.UndefinedTable:
             st.error("The low-stock views are missing. Apply migration 004 to the app database.")
             return
+        except psycopg2.errors.QueryCanceled:
+            st.error("The low-stock query timed out or was canceled. Retry the refresh in a moment.")
+            return
+        except psycopg2.errors.InsufficientPrivilege:
+            st.error("The app login needs permission to read the low-stock views.")
+            return
         except psycopg2.Error:
-            st.error("Could not refresh the low-stock report. Check the connection and view permissions.")
+            st.error("Could not refresh the low-stock report. Check the database connection and try again.")
             return
         else:
             st.session_state["stock-rollup"] = report
@@ -201,15 +207,33 @@ def reset_stock_rollup_page() -> None:
     st.session_state.pop("stock-rollup-page", None)
 
 
-PRODUCT_COLUMNS = ("Product ID", "Product", "Category ID", "Category", "Units", "Availability", "Stock issue",
-                   "Category issue", "Reorder candidate")
+PRODUCT_COLUMNS = (
+    "Product ID",
+    "Product",
+    "Category ID",
+    "Category",
+    "Units",
+    "Availability",
+    "Stock issue",
+    "Category issue",
+    "Reorder candidate",
+)
 
 
-def product_cells(row: StockProduct) -> tuple[int, str | None, int | None, str | None, int | None, str, str | None,
-                                              str | None, str]:
-    return (row.product_id, row.name, row.category_id, row.category_path, row.stock,
-            "On sale" if row.available else "Paused", row.stock_issue, row.hierarchy_issue,
-            "Yes" if row.needs_reorder else "No")
+def product_cells(row: StockProduct) -> tuple[
+    int, str | None, int | None, str | None, int | None, str, str | None, str | None, str
+]:
+    return (
+        row.product_id,
+        row.name,
+        row.category_id,
+        row.category_path,
+        row.stock,
+        "On sale" if row.available else "Paused",
+        row.stock_issue,
+        row.hierarchy_issue,
+        "Yes" if row.needs_reorder else "No",
+    )
 
 
 def worklist_csv(rows: list[StockProduct]) -> str:

@@ -78,8 +78,8 @@ class MondayReport:
         return f"monday-top-100-{self.cutoff.isoformat()}.csv"
 
     def monthly_history(self, customer_id: int) -> list[MonthSummary]:
-        # The export is ordered by customer ID. Read one customer's 12 rows
-        # on demand, without retaining a second copy of every monthly row.
+        # split_report_csv validates ascending customer IDs. Read one customer's
+        # 12 rows on demand without retaining a copy of every monthly row.
         months: list[MonthSummary] = []
         with TextIOWrapper(BytesIO(self.report_csv), encoding="utf-8", newline="") as source:
             rows = csv.reader(source)
@@ -91,9 +91,14 @@ class MondayReport:
                 if row_id > customer_id:
                     break
                 if kind == "month" and row_id == customer_id:
-                    months.append(MonthSummary(
-                        month, int(count), Decimal(spend) if spend else None, Decimal(running),
-                    ))
+                    months.append(
+                        MonthSummary(
+                            month,
+                            int(count),
+                            Decimal(spend) if spend else None,
+                            Decimal(running),
+                        )
+                    )
         return months
 
 
@@ -129,8 +134,10 @@ def split_report_csv(source: Iterable[str], cutoff: date) -> MondayReport:
     if header is None:
         raise ReportFormatError("The report query returned no CSV header.")
     positions = {column: index for index, column in enumerate(header)}
+    if len(positions) != len(header):
+        raise ReportFormatError("The report query returned duplicate column names.")
     required_columns = (*CUSTOMER_REPORT_COLUMNS, RANK_COLUMN)
-    if len(positions) != len(header) or not all(column in positions for column in required_columns):
+    if not all(column in positions for column in required_columns):
         raise ReportFormatError(
             "The report query returned unexpected columns. Check that the app and report SQL match."
         )
@@ -138,19 +145,35 @@ def split_report_csv(source: Iterable[str], cutoff: date) -> MondayReport:
     # Read the SQL result by column name. The customer file always uses its
     # own stable layout, even if the query reorders or adds output columns.
     export_positions = [positions[column] for column in CUSTOMER_REPORT_COLUMNS]
+    customer_id_position = positions["customer_id"]
+    previous_customer_id: int | None = None
+    reached_unmatched = False
     with BytesIO() as main_bytes, TextIOWrapper(main_bytes, encoding="utf-8", newline="") as main_csv:
         main_writer = csv.writer(main_csv)
         main_writer.writerow(CUSTOMER_REPORT_COLUMNS)
         for row in rows:
             if len(row) != len(header):
                 raise ReportFormatError("The report query returned a row with the wrong number of fields.")
-            main_writer.writerow([row[index] for index in export_positions])
             kind = row[positions["row_type"]]
+            raw_customer_id = row[customer_id_position]
+            # monthly_history stops at a higher ID or the final unmatched row.
+            if raw_customer_id:
+                customer_id = int(raw_customer_id)
+                if reached_unmatched or (
+                    previous_customer_id is not None and customer_id < previous_customer_id
+                ):
+                    raise ReportFormatError("The report query returned customer rows out of order.")
+                previous_customer_id = customer_id
+            elif kind == "unmatched_orders":
+                reached_unmatched = True
+            else:
+                raise ReportFormatError("The report query returned a customer row without an ID.")
+            main_writer.writerow([row[index] for index in export_positions])
             if kind == "customer_total":
                 spend = row[positions["recorded_spend"]]
                 rank = row[positions[RANK_COLUMN]]
                 customers.append(CustomerSummary(
-                    int(row[positions["customer_id"]]),
+                    int(raw_customer_id),
                     row[positions["customer_name"]],
                     int(row[positions["order_count"]]),
                     Decimal(spend) if spend else None,
@@ -167,10 +190,11 @@ def split_report_csv(source: Iterable[str], cutoff: date) -> MondayReport:
                 spend = row[positions["recorded_spend"]]
                 count = int(row[positions["order_count"]])
                 orders, total = activity_by_month.get(month, (0, Decimal(0)))
-                activity_by_month[month] = (
-                    orders + count,
-                    total + Decimal(spend) if count and spend else total,
-                )
+                # Blank means the order amounts are unknown. Sum the known
+                # amounts independently of the order count.
+                if spend:
+                    total += Decimal(spend)
+                activity_by_month[month] = (orders + count, total)
         main_csv.flush()
         report_csv = main_bytes.getvalue()
 

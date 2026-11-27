@@ -150,5 +150,6 @@ SELECT
     order_count, recorded_spend, running_spend, top_100_rank
 FROM report_rows
 -- A NULL month places the summary first, and the missing customer ID puts
--- the exception row after all customers. The rank remains sortable in CSV.
+-- the exception row after all customers. The CSV loader validates this
+-- customer order so the app can stop scanning once it passes the desired ID.
 ORDER BY customer_id NULLS LAST, month_start NULLS FIRST;

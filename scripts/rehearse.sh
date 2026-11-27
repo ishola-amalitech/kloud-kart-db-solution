@@ -61,6 +61,7 @@ printf 'Rehearsal evidence: %s\n' "$results"
     fi
     docker version --format 'Docker client {{.Client.Version}}, server {{.Server.Version}}'
     docker info --format 'Docker host: {{.OperatingSystem}}, {{.Architecture}}, {{.NCPU}} CPUs, {{.MemTotal}} bytes RAM'
+    printf 'Timings vary with host resources and concurrent load. Compare runs under similar conditions.\n'
 } > "$results/environment.txt"
 name="kk-rehearsal-${results##*.}"
 password=$(python3 -c 'import secrets; print(secrets.token_hex(24))')

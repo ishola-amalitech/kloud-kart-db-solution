@@ -8,7 +8,16 @@ from io import StringIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from kloud_kart_db_solution.monday_report import ReportFormatError, split_report_csv, write_private_csv
+from kloud_kart_db_solution.monday_report import (
+    CUSTOMER_REPORT_COLUMNS,
+    RANK_COLUMN,
+    ReportFormatError,
+    split_report_csv,
+    write_private_csv,
+)
+
+
+REPORT_HEADER = ",".join((*CUSTOMER_REPORT_COLUMNS, RANK_COLUMN))
 
 
 class MondayReportCsvTests(unittest.TestCase):
@@ -57,9 +66,23 @@ class MondayReportCsvTests(unittest.TestCase):
         with self.assertRaisesRegex(ReportFormatError, "unexpected columns"):
             split_report_csv(["customer_id,order_count\n"], date(2027, 8, 21))
 
+    def test_duplicate_customer_id_column_is_rejected(self) -> None:
+        with self.assertRaisesRegex(ReportFormatError, "duplicate column names"):
+            split_report_csv([f"{REPORT_HEADER},customer_id\n"], date(2027, 8, 21))
+
+    def test_out_of_order_rows_are_rejected_before_history_lookup(self) -> None:
+        source = [
+            f"{REPORT_HEADER}\n",
+            "customer_total,12,Adwoa,,0,0,0,\n",
+            "customer_total,13,Nana,,0,0,0,\n",
+            "month,12,,2027-07-01,0,0,0,\n",
+        ]
+        with self.assertRaisesRegex(ReportFormatError, "customer rows out of order"):
+            split_report_csv(source, date(2027, 8, 21))
+
     def test_row_wider_than_its_header_reports_a_format_error(self) -> None:
         source = [
-            "row_type,customer_id,customer_name,month_start,order_count,recorded_spend,running_spend,top_100_rank\n",
+            f"{REPORT_HEADER}\n",
             "customer_total,12,Adwoa,,2,75.00,,1,unexpected\n",
         ]
         with self.assertRaisesRegex(ReportFormatError, "wrong number of fields"):

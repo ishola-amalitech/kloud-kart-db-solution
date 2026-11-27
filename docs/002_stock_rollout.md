@@ -299,6 +299,11 @@ SQL
 test_psql < scripts/negative_stock.sql
 test_psql < scripts/migrations/002_safe_checkout.sql
 test_psql < scripts/migrations/003_restock_paused_products.sql
+
+# Install the views, permissions, and worklist optimization for the full app.
+test_psql < scripts/migrations/004_low_stock_rollup.sql
+test_psql < scripts/migrations/005_inventory_trail.sql
+test_psql < scripts/migrations/006_optimize_inventory_discrepancy_worklist.sql
 ```
 
 The first worklist should show 14 products. The second should be empty.

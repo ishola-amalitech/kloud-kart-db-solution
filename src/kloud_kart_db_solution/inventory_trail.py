@@ -80,7 +80,8 @@ def load_history(dsn: str, field: str, identifier: int, before: int | None) -> l
 
 def pause_products(dsn: str, product_ids: list[int]) -> None:
     # Use the same lock order as reconciliation batches. A failed pause rolls
-    # back the entire selection. No balance changes during this operation.
+    # back the entire selection. The connection context commits only after
+    # every call succeeds, then closing releases the connection.
     with closing(psycopg2.connect(dsn, connect_timeout=5)) as conn, conn, conn.cursor() as cursor:
         cursor.execute("SET LOCAL lock_timeout = '5s'")
         for product_id in sorted(product_ids):

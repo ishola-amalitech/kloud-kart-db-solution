@@ -69,10 +69,27 @@ the command exits. Copy the evidence directory out of your system's
 temporary directory if you need to retain it. Keep the evidence in approved
 storage and share it only with authorized staff. The CSVs contain customer data.
 
-Earlier Git revisions contain the client CSVs. For external distribution,
-use a current source snapshot with the client CSVs excluded or a repository
-whose history has been cleared for sharing. Git ignore rules apply to new
-files in the working tree.
+Earlier Git revisions contain the client CSVs. **Keep this repository and
+its Git history private.** For submission, commit the intended source
+changes, then export a source-only ZIP:
+
+```bash
+if [ -n "$(git ls-tree -r --name-only HEAD -- provided_resources/data/)" ]; then
+    printf 'Client data is tracked in HEAD. Resolve this before exporting.\n' >&2
+else
+    git archive --format=zip --output=../kloud-kart-source.zip HEAD
+fi
+```
+
+The ZIP contains committed files from `HEAD` and excludes Git history,
+local credentials, and untracked data. If the portal requires a repository
+URL, use a repository whose history has been cleared for sharing.
+
+The optional [pre-commit check](.githooks/pre-commit) rejects commits that
+include tracked files under `provided_resources/data/`. If you have no
+existing custom hooks, run `git config --local core.hooksPath .githooks`
+to enable it in this checkout. If you use existing hooks, run this check
+from your existing pre-commit hook.
 
 Use this command for a rehearsal. For an approved live rollout, follow
 the [production cutover guide](docs/002_stock_rollout.md#apply-to-production)
@@ -80,8 +97,9 @@ using verified physical counts.
 
 ## Run locally
 
-You’ll need Docker with Compose, `uv`, and Python 3.14 or later. Python 3.14
-is the tested series. `uv sync --locked` uses the versions in `uv.lock`.
+You’ll need Docker with Compose and `uv`. Use **Python 3.14.10** to match
+the rehearsal. The package accepts Python 3.14 or later. Later versions
+remain unverified for this submission.
 The `kk-*` commands use paths relative to the source checkout. Install
 with `uv sync --locked` in this repository and run them from the checkout.
 [Supply the client data](#supply-the-client-data) before seeding or
@@ -98,16 +116,14 @@ running the supplied race tests. Run these Bash commands from the repository roo
 2. Install dependencies and start PostgreSQL.
 
    ```bash
-   uv sync --locked
+   uv sync --locked --python 3.14.10
    uv run kk-test-db
    ```
 
-3. For an empty test database, follow the [seed and reconciliation walkthrough](docs/002_stock_rollout.md#rehearse-from-an-empty-test-database)
-   through migration 003. Then install [004 for low stock](docs/004_low_stock_rollup.md#install-and-verify),
-   [005 for the inventory trail](docs/005_inventory_trail.md#rehearse-on-test),
-   and [006 for performance](docs/006_performance.md#reproduce-and-roll-out) in order.
-   On an existing test database, apply only pending migrations. The supplied
-   seed schema drops and recreates tables, so keep it on an empty test database.
+3. For an empty test database, follow the
+   [ordered seed and migration walkthrough](docs/002_stock_rollout.md#rehearse-from-an-empty-test-database)
+   through migration 006. The supplied schema drops and recreates tables.
+   On an existing test database, skip seeding and apply only pending migrations.
 
 4. Launch the operator app.
 
@@ -124,7 +140,9 @@ running the supplied race tests. Run these Bash commands from the repository roo
 On 27 November 2026, a disposable PostgreSQL 18.7 instance loaded the
 supplied data and applied migrations 001–006. The rehearsal used Docker Desktop
 29.9.3 on x86-64 with 8 CPUs, about 16 GiB RAM available to Docker, and
-Python 3.14.10. The stock counts used to reconcile the seed were simulated.
+Python 3.14.10. It started PostgreSQL with `max_connections=450` for the
+400-buyer race case. The stock counts used to reconcile the seed were
+simulated. Timings vary with machine resources and concurrent load.
 
 | Check | Result |
 | --- | --- |
