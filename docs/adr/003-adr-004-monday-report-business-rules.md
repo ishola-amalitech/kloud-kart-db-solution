@@ -40,6 +40,55 @@ month’s running total. Break spend ties by ascending customer ID.
 | Use the server’s current date, a rolling 365-day window, or the current partial month | Current-date cutoffs change when a run is retried. Rolling days or a partial month are useful for recent activity, but month-to-month comparisons would include periods of different lengths at the edges. |
 | Restart the running total at zero in the first displayed month | Shows cumulative spend within the visible window. It omits the earlier spend Adwoa needs to see a customer’s balance through each month-end. |
 
+### Ranking sensitivity
+
+On the supplied data, normalizing the completion statuses changes **82 of
+the 100 customers** compared with exact `completed` matching. Including
+`shipped` alongside the chosen statuses changes **17 of the 100** compared
+with the chosen rule. If operations treats shipments as completed sales,
+that choice changes who makes the outreach list.
+
+This comparison covers the **21 August 2026 inclusive to 21 August 2027
+exclusive** audit window. The Monday report ranks all eligible history
+before the cutoff. To reproduce, run the query on the seeded test database.
+It sums recorded totals for known customers, breaks ties by customer ID,
+and counts new members of each alternative list.
+
+```sql
+WITH customer_spend AS (
+    SELECT
+        o.customer_id,
+        sum(o.total_amount) FILTER (WHERE o.status = 'completed') AS exact_spend,
+        sum(o.total_amount) FILTER (
+            WHERE lower(btrim(o.status)) IN ('complete', 'completed')
+        ) AS chosen_spend,
+        sum(o.total_amount) FILTER (
+            WHERE lower(btrim(o.status)) IN ('complete', 'completed', 'shipped')
+        ) AS shipped_spend
+    FROM public.orders AS o
+    JOIN public.customers AS c USING (customer_id)
+    WHERE o.order_date >= DATE '2026-08-21'
+      AND o.order_date < DATE '2027-08-21'
+    GROUP BY o.customer_id
+), exact_top AS (
+    SELECT customer_id FROM customer_spend WHERE exact_spend IS NOT NULL
+    ORDER BY exact_spend DESC, customer_id LIMIT 100
+), chosen_top AS (
+    SELECT customer_id FROM customer_spend WHERE chosen_spend IS NOT NULL
+    ORDER BY chosen_spend DESC, customer_id LIMIT 100
+), shipped_top AS (
+    SELECT customer_id FROM customer_spend WHERE shipped_spend IS NOT NULL
+    ORDER BY shipped_spend DESC, customer_id LIMIT 100
+)
+SELECT
+    (SELECT count(*) FROM (
+        SELECT customer_id FROM chosen_top EXCEPT SELECT customer_id FROM exact_top
+    ) AS new_members) AS changed_by_completion_rule,
+    (SELECT count(*) FROM (
+        SELECT customer_id FROM shipped_top EXCEPT SELECT customer_id FROM chosen_top
+    ) AS new_members) AS changed_by_including_shipped;
+```
+
 ## Consequences
 
 Adwoa can compare complete months, rerun a cutoff on the same data, and

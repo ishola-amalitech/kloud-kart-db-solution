@@ -65,7 +65,7 @@ The rank reflects which decisions need protection first. Before the flash sale, 
 | Finding | **Operational impact** | **Proposed fix and trade-off** |
 |---|---|---|
 | [Negative stock and overselling](#overselling-timestamps-and-indexes) | **14 products to count**, with balances a combined **27 units below zero**. The brief reports two oversells last month. The extract cannot link them to these balances or establish refund costs. | Count affected stock and pause those products until verified. Guard checkout with a conditional stock decrement and write the order, line, and movement in the same transaction. Add a nonnegative constraint after reconciling existing balances. Run the supplied race test before the flash sale. Pausing products temporarily reduces availability. |
-| [Status spellings](#order-statuses) | For known customers, exact `completed` matching drops **6,888 orders** and **21,243,400.85** in stored totals relative to the proposed completion rule. This is a conditional difference in the spend report. | Map raw statuses to an approved vocabulary and enforce it on writes. Preserve raw values while validating the mapping. An incorrect mapping could count orders the business excludes. |
+| [Status spellings](#order-statuses) | For known customers, exact `completed` matching drops **6,888 orders** and **21,243,400.85** in stored totals relative to the chosen completion rule. Switching to that rule changes **82 of the 100 customers** on the audit window’s spending list. | Map raw statuses to an approved vocabulary and enforce it on writes. Preserve raw values while validating the mapping. An incorrect mapping could change who Nana contacts. |
 | [Category rollup omissions](#category-hierarchy) | A root-based rollup misses **43 products**: **37 uncategorized** and **6 under the cycle**. Of these, **15** qualify as low stock at the test threshold. The broken parent link affects **0 products** in this traversal. | Show unreachable and uncategorized products in a reorder exception list now. Confirm their categories and the intended parent links, then add the category foreign keys and cycle guard. Keep an explicit uncategorized bucket if classification is optional. A guessed category would move stock into the wrong purchasing group. |
 | [Slow customer-spending report](#overselling-timestamps-and-indexes) | About **40 minutes** per run, with some Mondays unfinished, according to the brief. Nana sometimes decides without it. The time attributable to missing indexes is unknown. | Aggregate the spending and counts before computing running totals and ranks. Test candidate indexes and benchmark elapsed time and completion on the same workload using the existing PostgreSQL server. Check the figures match the agreed reporting rules. Indexes add storage and write overhead. |
 
@@ -201,6 +201,13 @@ Both checks found **0 violations** among matching records. The foreign-key check
 ## Order statuses and inventory reasons
 
 ### Order statuses
+
+**Effect on the outreach list.** In the 12-month audit window, **82 customers**
+enter the top 100 when the chosen completion rule replaces exact `completed`
+matching. Including `shipped` in the chosen rule brings **17 different
+customers** into that list. Each comparison counts new members, so moving up
+or down within the same list does not count. The Monday report’s live ranking
+uses all eligible history before the cutoff. [Decision and comparison query](adr/003-adr-004-monday-report-business-rules.md#ranking-sensitivity)
 
 - **Evidence.** **15 stored values**, **7 after trimming and lowercasing**. Normalization leaves `complete` and `completed` distinct, as it does `canceled` and `cancelled`.
 - **Detection.** `ROLLUP` counts stored spellings, normalized groups, and all **159,384 orders** in one query. The four `completed` spellings total **89,066 orders**. Orders without items total **0** at every level.

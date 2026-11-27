@@ -14,11 +14,8 @@ and trace inventory changes. [Lab brief](lab_brief.md)
 | Low-stock rollup | Counts reorder candidates across nested categories, flags broken category paths for review, and lets operators drill down to the affected products. |
 | Inventory trail | Records stock movements through controlled database operations and lets an auditor trace sales, restocks, and corrections. |
 
-The supplied race suite passed all four tests on the seeded test database.
-In its 400-buyer burst, checkout sold 50 available units and rejected the
-remaining 350 attempts with zero errors. The performance rollout also cut
-the median inventory discrepancy query from **201.191 ms to 54.375 ms**
-with identical results. [Checkout results](docs/002_stock_rollout.md#rehearsal-results) ·
+The performance rollout cut the median inventory discrepancy query from
+**201.191 ms to 54.375 ms** with identical results.
 [Performance measurements and query plans](docs/006_performance.md)
 
 ## Run locally
@@ -57,6 +54,38 @@ Run these Bash commands from the repository root.
    Open `http://127.0.0.1:8501` for **Stock reconciliation**, **Monday exports**,
    **Low stock**, and **Inventory trail**.
    [Connection settings](docs/002_stock_rollout.md#connection-settings)
+
+## Fresh-load verification
+
+On 27 November 2026, a separate PostgreSQL 18 test instance loaded the
+supplied data and applied migrations 001–006. The stock counts used to
+reconcile the seed were simulated for the test.
+
+| Check | Result |
+| --- | --- |
+| Supplied race suite | All four cases passed on three consecutive runs with the supplied script unchanged. Each 400-buyer burst sold 50 units, refused 350, and returned zero errors. |
+| Inventory and category SQL checks | Both passed, including the movement trail and the 12-level category fixture. |
+| Monday report, cutoff 2027-08-21 | 4.23–5.38 seconds across three runs, including generation of both CSVs. Verified 40,420 customer summaries and 100 ranked customers. |
+| Low-stock data load | 30–103 ms across three runs, including connection and both view reads. |
+
+To reproduce, start with the [empty test database setup](#run-locally).
+After applying migrations 001–006, use the [test connection settings](docs/002_stock_rollout.md#connection-settings)
+and [raise the test connection limit for the 400-buyer burst](docs/002_stock_rollout.md#run-the-checkout-tests).
+Run from the repository root, then restore the original connection limit.
+
+```bash
+(
+  set -e
+  for run in 1 2 3; do uv run --locked kk-race-test; done
+  uv run --locked python -m unittest discover -s tests
+)
+```
+
+Run just the verification commands from the [category guide](docs/004_low_stock_rollup.md#install-and-verify)
+and [inventory guide](docs/005_inventory_trail.md#rehearse-on-test) after the
+migrations are applied. For the report, follow the [Monday export steps](docs/003_monday_report.md#run-the-app-and-export)
+using cutoff `2027-08-21`. The terminal export also includes time to write the
+CSV files. The timings above are from the local rehearsal.
 
 ## Useful commands
 

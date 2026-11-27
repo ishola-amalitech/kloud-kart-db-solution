@@ -27,6 +27,7 @@ below keeps the individual runs and links to the saved query plans.
 - [Monday report cutoff comparison](#monday-report-cutoff-comparison)
 - [Completed-orders index](#completed-orders-index)
 - [Materialized Monday report](#materialized-monday-report)
+- [Monday report during a flash sale](#monday-report-during-a-flash-sale)
 - [Rollout status](#rollout-status)
 
 ## Performance work already in place
@@ -603,6 +604,33 @@ SELECT *
 FROM public.kk_bench_monday_report
 ORDER BY customer_id NULLS LAST, month_start NULLS FIRST;
 ```
+
+## Monday report during a flash sale
+
+On 27 November 2026, a separate PostgreSQL 18 test instance used the
+supplied data and migrations 001–006. Each comparison ran the report
+alone, both paced checkout scenarios alone, and the same checkout
+scenarios with one report started one second into each sale. The paced
+test scheduled 400 attempts over ten seconds using 32 reusable
+connections. The report ran with cutoff `2027-08-21` and generated both
+CSVs in memory. Checkout latency was measured from each buyer's
+scheduled arrival, including time spent waiting for a worker.
+
+The timed report used the same loader as the app. The report started
+while purchases were being committed, so the result included the fixture
+orders visible in its snapshot. We checked that the extra recorded spend
+matched the count of visible fixture purchases at 100.00 each and that
+other customers' counts and spending were unchanged. The paced test
+also independently verified the final stock, orders, lines, and
+inventory movements.
+
+To repeat the comparison on a seeded test instance, start with the
+[paced test command](002_stock_rollout.md#run-the-checkout-tests) and the
+[Monday export steps](003_monday_report.md#run-the-app-and-export).
+Measure the two workloads separately, then generate the report during
+each ten-second checkout scenario and record the actual overlap. For a
+timed rehearsal, call `load_monday_report` when the paced test reaches
+the first scheduled arrival one second into each scenario.
 
 ## Rollout status
 
