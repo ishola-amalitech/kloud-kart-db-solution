@@ -11,9 +11,10 @@
 | [Monday report cutoffs](#monday-report-cutoff-comparison) | 1,207.290 ms at broad cutoff | 1,092.960 ms at midpoint Monday | Yes | Kept cutoff rules |
 | [Completed-orders index](#completed-orders-index) | 1,087.107 ms June, 1,489.523 ms August | 1,108.168 ms June, 1,420.682 ms August | Yes | Rolled back |
 | [Materialized Monday report](#materialized-monday-report) | 1,070.458 ms direct read | 134.223 ms stored read, 1,220.029 ms refresh | Yes | Kept direct query |
+| [Monday report during a flash sale](#monday-report-during-a-flash-sale) | 3.3–6.0 ms checkout p95 without report | 17.4–18.9 ms checkout p95 with report | Yes | All attempts finished within ten seconds in test |
 
-Times are medians on the seeded PostgreSQL test database. Each benchmark
-below keeps the individual runs and links to the saved query plans.
+Timings are medians unless shown as ranges or individual measurements.
+Each benchmark below records its test conditions and the evidence available.
 
 ## Contents
 
@@ -607,6 +608,24 @@ ORDER BY customer_id NULLS LAST, month_start NULLS FIRST;
 
 ## Monday report during a flash sale
 
+All 400 attempts finished within ten seconds in every run, with zero
+checkout errors. The 400-unit scenario sold 400 units. The 50-unit
+scenario sold 50 and refused 350. Running the report raised checkout
+p95, the time within which 95% of buyers heard back, in all four
+comparisons.
+
+| Pair | Starting stock | Checkout p95 alone | Checkout p95 with report | Report alone | Concurrent report |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 1 | 400 | 6.0 ms | 18.9 ms | 5.686 s | 4.756 s |
+| 1 | 50 | 3.3 ms | 18.6 ms | 5.686 s | 4.134 s |
+| 2 | 400 | 5.9 ms | 17.4 ms | 4.246 s | 2.802 s |
+| 2 | 50 | 4.1 ms | 17.5 ms | 4.246 s | 3.000 s |
+
+These two local pairs show sufficient throughput for the simulated sale.
+The report timings varied between runs. The checkout latency increase
+makes it worth scheduling routine exports outside the first live sale,
+then checking response times on the live setup before relying on overlap.
+
 On 27 November 2026, a separate PostgreSQL 18 test instance used the
 supplied data and migrations 001–006. Each comparison ran the report
 alone, both paced checkout scenarios alone, and the same checkout
@@ -620,7 +639,9 @@ The timed report used the same loader as the app. The report started
 while purchases were being committed, so the result included the fixture
 orders visible in its snapshot. We checked that the extra recorded spend
 matched the count of visible fixture purchases at 100.00 each and that
-other customers' counts and spending were unchanged. The paced test
+other customers' counts and spending matched the report-only run. Each
+concurrent report saw 41 fixture purchases and finished while checkout
+was still accepting attempts. The paced test
 also independently verified the final stock, orders, lines, and
 inventory movements.
 

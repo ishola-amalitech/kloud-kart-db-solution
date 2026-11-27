@@ -87,6 +87,9 @@ migrations are applied. For the report, follow the [Monday export steps](docs/00
 using cutoff `2027-08-21`. The terminal export also includes time to write the
 CSV files. The timings above are from the local rehearsal.
 
+The [shared-workload rehearsal](docs/006_performance.md#monday-report-during-a-flash-sale)
+also checked 400 paced checkout attempts while the Monday report ran.
+
 ## Useful commands
 
 | Command | Use |
