@@ -645,13 +645,12 @@ was still accepting attempts. The paced test
 also independently verified the final stock, orders, lines, and
 inventory movements.
 
-To repeat the comparison on a seeded test instance, start with the
-[paced test command](002_stock_rollout.md#run-the-checkout-tests) and the
-[Monday export steps](003_monday_report.md#run-the-app-and-export).
-Measure the two workloads separately, then generate the report during
-each ten-second checkout scenario and record the actual overlap. For a
-timed rehearsal, call `load_monday_report` when the paced test reaches
-the first scheduled arrival one second into each scenario.
+Repeat both pairs with the [one-command rehearsal](../README.md#reproduce-the-lab-with-one-command).
+Read `workloads.log` for the checkout timings, visible fixture sales,
+and actual start and end of each report on the sale clock. The command
+uses the later of `2027-08-21` and tomorrow in UTC as the report cutoff,
+so checkout purchases are eligible even when the rehearsal is repeated
+after the seed's last order date.
 
 ## Rollout status
 

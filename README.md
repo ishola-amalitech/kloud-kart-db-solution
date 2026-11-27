@@ -18,6 +18,35 @@ The performance rollout cut the median inventory discrepancy query from
 **201.191 ms to 54.375 ms** with identical results.
 [Performance measurements and query plans](docs/006_performance.md)
 
+## Reproduce the lab with one command
+
+From the repository root, with Docker running and `uv`, Bash, and Python
+available, run:
+
+```bash
+bash scripts/rehearse.sh
+```
+
+The command starts a disposable PostgreSQL 18 container with a random local
+port and password. It checks that the database is empty, loads the supplied
+data, audits the original rows, and applies migrations 001–006. It uses
+simulated counts for the test reconciliation. It runs the inventory and
+category SQL checks, the supplied race suite three times unchanged, and
+the Monday report and paced checkout both separately and together.
+
+The command prints the evidence directory at startup and on success.
+It contains the PostgreSQL version, baseline audit, migration and test
+logs, both Monday CSVs, and checkout, report, and rollup timings. The
+checkout scenarios take at least 80 seconds. The initial image and
+dependency downloads can add time. The container is removed when
+the command exits. Copy the evidence directory out of your system's
+temporary directory if you need to retain it. The report CSVs contain
+customer data, so share them only with people who should see them.
+
+Use this command for a rehearsal. For an approved live rollout, follow
+the [production cutover guide](docs/002_stock_rollout.md#apply-to-production)
+using verified physical counts.
+
 ## Run locally
 
 You’ll need Docker with Compose, `uv`, and Python 3.14 or later.
